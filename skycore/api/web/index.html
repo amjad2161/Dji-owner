@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SkyCore Dashboard</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, system-ui, sans-serif; background: #0e0f12; color: #e9ecef; }
+  header { padding: 16px 24px; background: #1a1d22; border-bottom: 1px solid #2a2e35; display: flex; justify-content: space-between; align-items: center; }
+  header h1 { margin: 0; font-size: 18px; font-weight: 500; letter-spacing: 0.5px; }
+  .pill { padding: 4px 10px; border-radius: 99px; font-size: 12px; }
+  .pill.ok { background: #1e3a25; color: #6cd47b; }
+  .pill.bad { background: #3a1e1e; color: #d46c6c; }
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 24px; max-width: 1200px; margin: 0 auto; }
+  .card { background: #1a1d22; border: 1px solid #2a2e35; border-radius: 8px; padding: 16px; }
+  .card h2 { margin: 0 0 12px; font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px; color: #8a93a0; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .metric { padding: 8px 0; }
+  .metric .label { font-size: 11px; text-transform: uppercase; color: #6c757d; letter-spacing: 0.5px; }
+  .metric .value { font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .metric .unit { font-size: 12px; color: #8a93a0; margin-left: 4px; }
+  .controls button { padding: 10px 16px; margin: 4px; font-size: 14px; background: #2a2e35; color: #e9ecef; border: 1px solid #3a3e45; border-radius: 6px; cursor: pointer; }
+  .controls button:hover { background: #3a3e45; }
+  .controls button.danger { background: #3a1e1e; border-color: #5a2e2e; }
+  .controls button.primary { background: #1e3a4a; border-color: #2e5a7a; }
+  pre { background: #0e0f12; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 11px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>SKYCORE</h1>
+  <span id="status" class="pill bad">disconnected</span>
+</header>
+<main>
+  <section class="card">
+    <h2>Telemetry</h2>
+    <div class="grid">
+      <div class="metric"><div class="label">Altitude</div><div class="value" id="m-alt">—<span class="unit">m</span></div></div>
+      <div class="metric"><div class="label">Battery</div><div class="value" id="m-bat">—<span class="unit">%</span></div></div>
+      <div class="metric"><div class="label">Yaw</div><div class="value" id="m-yaw">—<span class="unit">°</span></div></div>
+      <div class="metric"><div class="label">Mode</div><div class="value" id="m-mode">—</div></div>
+      <div class="metric"><div class="label">Lat</div><div class="value" id="m-lat" style="font-size:14px">—</div></div>
+      <div class="metric"><div class="label">Lon</div><div class="value" id="m-lon" style="font-size:14px">—</div></div>
+      <div class="metric"><div class="label">GPS sats</div><div class="value" id="m-gps">—</div></div>
+      <div class="metric"><div class="label">Voltage</div><div class="value" id="m-volt">—<span class="unit">V</span></div></div>
+    </div>
+  </section>
+
+  <section class="card controls">
+    <h2>Commands</h2>
+    <div>
+      <button class="primary" onclick="cmd('takeoff', {altitude: 10})">Takeoff (10 m)</button>
+      <button onclick="cmd('rth')">Return to home</button>
+      <button class="danger" onclick="cmd('land')">Land</button>
+    </div>
+    <div style="margin-top:12px">
+      <button onclick="cmd('photo')">Photo</button>
+      <button onclick="cmd('record/start')">Record start</button>
+      <button onclick="cmd('record/stop')">Record stop</button>
+    </div>
+    <div style="margin-top:12px">
+      <input id="goto-lat" placeholder="lat" style="width:100px;padding:6px"/>
+      <input id="goto-lon" placeholder="lon" style="width:100px;padding:6px"/>
+      <input id="goto-alt" placeholder="alt (m)" value="30" style="width:80px;padding:6px"/>
+      <button class="primary" onclick="goto()">Goto</button>
+    </div>
+  </section>
+
+  <section class="card" style="grid-column: 1 / -1">
+    <h2>Raw stream</h2>
+    <pre id="raw">waiting...</pre>
+  </section>
+</main>
+<script>
+let ws;
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/telemetry`);
+  ws.onopen = () => { document.getElementById('status').className = 'pill ok'; document.getElementById('status').textContent = 'connected'; };
+  ws.onclose = () => { document.getElementById('status').className = 'pill bad'; document.getElementById('status').textContent = 'disconnected'; setTimeout(connect, 1000); };
+  ws.onmessage = (e) => {
+    const t = JSON.parse(e.data);
+    document.getElementById('m-alt').firstChild.data = t.position.alt.toFixed(1);
+    document.getElementById('m-bat').firstChild.data = t.battery.percent.toFixed(0);
+    document.getElementById('m-yaw').firstChild.data = t.yaw.toFixed(0);
+    document.getElementById('m-mode').textContent = t.mode;
+    document.getElementById('m-lat').textContent = t.position.lat.toFixed(6);
+    document.getElementById('m-lon').textContent = t.position.lon.toFixed(6);
+    document.getElementById('m-gps').textContent = t.gps.satellites;
+    document.getElementById('m-volt').firstChild.data = t.battery.voltage.toFixed(2);
+    document.getElementById('raw').textContent = JSON.stringify(t, null, 2);
+  };
+}
+async function cmd(path, body) {
+  await fetch('/api/' + path, { method: 'POST', headers: {'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : '{}' });
+}
+async function goto() {
+  const lat = parseFloat(document.getElementById('goto-lat').value);
+  const lon = parseFloat(document.getElementById('goto-lon').value);
+  const alt = parseFloat(document.getElementById('goto-alt').value);
+  await cmd('goto', {lat, lon, alt});
+}
+connect();
+</script>
+</body>
+</html>
