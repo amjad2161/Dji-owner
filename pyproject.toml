@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skycore"
-version = "0.3.0"
+version = "0.4.0"
 description = "Unified drone operations platform integrating DJI, MAVLink, Tello, and a built-in simulator"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -41,6 +41,10 @@ notifications = ["aiohttp>=3.9"]
 mqtt = ["paho-mqtt>=2.0"]
 cloud = ["boto3>=1.30"]
 foxglove = ["websockets>=12.0"]
+exif = ["piexif>=1.1"]
+mcap = ["mcap>=1.0"]
+voice = ["openai-whisper>=20231117"]
+voice-fast = ["faster-whisper>=1.0"]
 all = [
   "fastapi>=0.110", "uvicorn[standard]>=0.27", "websockets>=12.0",
   "pandas>=2.0",
@@ -53,6 +57,8 @@ all = [
   "aiohttp>=3.9",
   "paho-mqtt>=2.0",
   "boto3>=1.30",
+  "piexif>=1.1",
+  "mcap>=1.0",
 ]
 dev = ["pytest>=7", "pytest-asyncio>=0.23", "ruff>=0.1"]
 

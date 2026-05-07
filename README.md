@@ -37,25 +37,62 @@ async def main():
 asyncio.run(main())
 ```
 
-The same mission runs against a real Tello (`TelloDrone()`), a PX4/ArduPilot via MAVSDK (`MavlinkDrone()`), or a real DJI Mavic through the Android bridge app (`DjiBridgeDrone()`).
+The same mission runs against a real Tello (`TelloDrone()`), a PX4 / ArduPilot via MAVSDK (`MavlinkDrone()`), or a real DJI Mavic through the Android bridge app (`DjiBridgeDrone()`).
 
-### What SkyCore includes
+## What SkyCore includes
+
+### Core platform
 
 | Layer | What it does |
 |-------|--------------|
 | **Adapters** | Simulator, Tello, MAVLink (PX4/ArduPilot), DJI bridge |
 | **Core** | `Drone` ABC, `Telemetry`, `SafeDrone` (geofence + RTH + battery), `EventBus` |
 | **Missions** | Waypoint executor, orbit / lawnmower-survey generators, Litchi CSV import/export |
+| **Templates** | 8 mission generators: panorama, perimeter, building inspection, hyperlapse, vertical pano, spiraling orbit, facade scan, cinematic reveal |
 | **Vision** | YOLO detector + BoT-SORT tracker + visual-follow controller (works on any backend) |
-| **Video** | H.264/H.265 recorder, RTMP streamer, Gyroflow CLI wrapper |
+| **Video** | H.264/H.265 recorder, RTMP streamer, Gyroflow CLI wrapper, hyperlapse renderer, HLS proxy |
 | **Analytics** | CSV flight-log analyzer with structured `FlightSummary` |
-| **API** | FastAPI REST + WebSocket telemetry + dark dashboard |
-| **CLI** | `skycore serve / mission / analyze` (Click-based) |
+| **API** | FastAPI REST + WebSocket telemetry + Leaflet map dashboard |
+| **CLI** | `skycore serve / mission / analyze / weather / elevation / golden-hour / flights` |
 | **Deploy** | `docker compose up` — simulator backend running at :8080 |
 
-See [SkyCore architecture](docs/en/skycore-architecture.md) and [SkyCore quick start](docs/en/skycore-getting-started.md).
+### Safety, planning, awareness
 
-## Six capability tracks
+| Module | Purpose |
+|--------|---------|
+| `geofence` | Polygon geofence (KML / GeoJSON) |
+| `airspace` | OpenAIP airspace classification |
+| `weather` | Open-Meteo pre-flight weather |
+| `terrain` | Open-Elevation terrain clearance |
+| `awareness` | OpenSky manned-aircraft proximity |
+| `planning` | A* path planning around obstacles |
+| `wind` | Wind estimation from telemetry |
+| `checklist` | Aggregated pre-flight checklist |
+| `pilot` | Pilot competency self-check |
+| `scheduler` | Sun-aware mission scheduler |
+| `profiles` | Hardware specs for 12 Mavic models |
+
+### Capture, storage, integration
+
+| Module | Purpose |
+|--------|---------|
+| `fleet` | Multi-drone formations (line, V) |
+| `notifications` | Discord / Slack / Telegram webhooks |
+| `storage` | SQLite flight + telemetry history |
+| `battery` | Battery cycle / health tracker |
+| `replay` | Replay CSV log onto event bus |
+| `events` | 18 typed lifecycle events |
+| `exif` | EXIF geotagging from telemetry |
+| `mqtt` | MQTT bridge for IoT integration |
+| `cloud` | S3-compatible cloud sync |
+| `foxglove` | Foxglove WebSocket bridge |
+| `mcap_recording` | MCAP telemetry recording |
+| `voice` | Whisper STT + command parser |
+| `photogrammetry` | OpenDroneMap wrapper |
+
+See [SkyCore architecture](docs/en/skycore-architecture.md), [SkyCore quick start](docs/en/skycore-getting-started.md), [extended modules](docs/en/skycore-extended.md), and [sweep-6 modules](docs/en/skycore-sweep6.md).
+
+## Six capability tracks (pilot-facing tutorials)
 
 | # | Track | What you achieve |
 |---|-------|------------------|
@@ -70,22 +107,33 @@ See [SkyCore architecture](docs/en/skycore-architecture.md) and [SkyCore quick s
 
 ```
 dji-owner/
-├─ skycore/                      ← unified Python runtime
+├─ skycore/                      ← unified Python runtime (~80 files, 25+ modules)
 │  ├─ core/                       Drone interface, Telemetry, SafeDrone, EventBus
 │  ├─ adapters/                   simulator | tello | mavlink | dji_msdk
-│  ├─ missions/                   waypoint executor + generators + Litchi I/O
-│  ├─ vision/                     detector + tracker + visual-follow
-│  ├─ video/                      recorder + RTMP streamer + Gyroflow
-│  ├─ analytics/                  flight-log analyzer
-│  ├─ api/                        FastAPI app + dark HTML dashboard
+│  ├─ missions/ + templates/      8 mission generators + Litchi I/O
+│  ├─ vision/ + video/            CV pipeline + recording + streaming + hyperlapse
+│  ├─ geofence/ + airspace/       polygon + OpenAIP
+│  ├─ weather/ + terrain/         Open-Meteo + Open-Elevation
+│  ├─ awareness/                  OpenSky manned-aircraft
+│  ├─ planning/ + scheduler/      A* + sun-aware scheduler
+│  ├─ fleet/ + events/            multi-drone + lifecycle
+│  ├─ notifications/              Discord / Slack / Telegram
+│  ├─ storage/ + battery/         SQLite history + battery health
+│  ├─ replay/ + exif/             log replay + photo geotag
+│  ├─ mqtt/ + cloud/              MQTT bridge + S3 sync
+│  ├─ foxglove/ + mcap_recording/ Foxglove WS + MCAP recording
+│  ├─ voice/ + pilot/             Whisper STT + competency check
+│  ├─ streaming/ + photogrammetry HLS proxy + ODM wrapper
+│  ├─ wind/ + checklist/          wind estimator + pre-flight aggregator
+│  ├─ profiles/                   12 Mavic-family hardware specs
+│  ├─ analytics/                  flight-log CSV analyzer
+│  ├─ api/                        FastAPI app + Leaflet dashboard
 │  └─ cli.py                      `skycore` command
 ├─ docs/                         Bilingual documentation (en + he)
-│  ├─ en/                         English guides + reference
-│  └─ he/                         Hebrew translations
 ├─ scripts/windows/              install-toolkit.ps1, clone-dev-repos.ps1
-├─ tools/log-analyzer/           Standalone Python CLI (also wrapped by SkyCore)
+├─ tools/log-analyzer/           Standalone Python CLI
 ├─ presets/litchi-missions/      Ready-to-use Litchi waypoint CSVs
-├─ tests/                        pytest suite for SkyCore
+├─ tests/                        pytest suite (sweeps 1–6)
 ├─ Dockerfile + docker-compose.yml
 └─ pyproject.toml                Modern Python packaging
 ```
@@ -154,7 +202,7 @@ You are responsible for following your local civil aviation authority's rules. S
 
 ## Project status
 
-🚧 Alpha. Core SkyCore (simulator + missions + analytics + API) is tested and works. Real-hardware adapters (Tello, MAVLink, DJI bridge) are implemented and follow the same contract; the Tello and MAVLink paths use third-party libraries already proven on the relevant hardware. The DJI bridge requires a small Android companion app (separate project; protocol documented in `skycore/adapters/dji_msdk.py`).
+🚧 Alpha. SkyCore (~25 modules across 6 build sweeps) is well-tested for the simulator path; real-hardware adapters are implemented and follow the same contract via well-vetted third-party libraries. The DJI bridge requires a small Android companion app (separate project; protocol documented in `skycore/adapters/dji_msdk.py`).
 
 Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
