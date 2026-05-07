@@ -1,11 +1,12 @@
 """FastAPI application that exposes SkyCore over HTTP + WebSocket.
 
 Serves:
-- REST API for flight commands (takeoff, land, goto, etc.)
+- REST API for flight commands
 - WebSocket for live telemetry
-- Static dashboard (single HTML/JS page) at /
-- Pre-flight checks: weather, terrain, geofence
-- Flight history from local SQLite
+- Static dashboard (Leaflet map) at /
+- Pre-flight checks: weather, terrain, geofence, full checklist
+- Mission template generators
+- Drone profiles, flight history, battery health
 """
 from __future__ import annotations
 
@@ -43,7 +44,7 @@ def create_app(drone: Drone, geofence: Optional[GeofenceConfig] = None, db_path:
             producer.cancel()
             await drone.disconnect()
 
-    app = FastAPI(title="SkyCore", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="SkyCore", version="0.3.0", lifespan=lifespan)
 
     class GotoRequest(BaseModel):
         lat: float
@@ -70,9 +71,18 @@ def create_app(drone: Drone, geofence: Optional[GeofenceConfig] = None, db_path:
         lat: float
         lon: float
 
+    class ChecklistRequest(BaseModel):
+        max_wind_kph: float = 36.0
+        min_battery_percent: float = 90.0
+        min_gps_satellites: int = 12
+
+    class TemplateRequest(BaseModel):
+        kind: str  # "orbit" | "panorama" | "perimeter" | "building" | "hyperlapse" | "facade" | "reveal" | "spiral"
+        params: dict = {}
+
     @app.get("/api/health")
     async def health():
-        return {"status": "ok", "drone": drone.name, "connected": drone.is_connected, "version": "0.2.0"}
+        return {"status": "ok", "drone": drone.name, "connected": drone.is_connected, "version": "0.3.0"}
 
     @app.get("/api/telemetry")
     async def telemetry():
@@ -153,6 +163,81 @@ def create_app(drone: Drone, geofence: Optional[GeofenceConfig] = None, db_path:
         e = await loop.run_in_executor(None, get_elevation, req.lat, req.lon)
         return {"elevation_m_amsl": e}
 
+    @app.post("/api/preflight/checklist")
+    async def preflight_checklist(req: ChecklistRequest):
+        from skycore.checklist import PreflightChecklist
+        home = geofence.home if (geofence and geofence.home) else None
+        cl = PreflightChecklist(
+            drone=drone,
+            home=home,
+            max_wind_kph=req.max_wind_kph,
+            min_battery_percent=req.min_battery_percent,
+            min_gps_satellites=req.min_gps_satellites,
+        )
+        report = await cl.run()
+        return report.to_dict()
+
+    @app.post("/api/missions/template")
+    async def missions_template(req: TemplateRequest):
+        """Generate a mission from a template; returns waypoints as JSON."""
+        from skycore.templates import (
+            panorama_mission, perimeter_patrol, building_inspection,
+            hyperlapse_line, vertical_panorama, spiraling_orbit,
+            facade_scan, cinematic_reveal,
+        )
+        from skycore.missions.orbit import orbit_mission
+        p = req.params
+        try:
+            if req.kind == "orbit":
+                m = orbit_mission(GeoPoint(p["lat"], p["lon"]), radius_m=p.get("radius", 50), altitude_m=p.get("altitude", 30), waypoints=p.get("waypoints", 12))
+            elif req.kind == "panorama":
+                m = panorama_mission(GeoPoint(p["lat"], p["lon"]), altitude_m=p.get("altitude", 30), yaw_steps=p.get("yaw_steps", 12))
+            elif req.kind == "perimeter":
+                pts = [GeoPoint(c["lat"], c["lon"]) for c in p["corners"]]
+                m = perimeter_patrol(pts, altitude_m=p.get("altitude", 40))
+            elif req.kind == "building":
+                m = building_inspection(GeoPoint(p["lat"], p["lon"]), radius_m=p.get("radius", 25))
+            elif req.kind == "hyperlapse":
+                m = hyperlapse_line(GeoPoint(p["start_lat"], p["start_lon"]), GeoPoint(p["end_lat"], p["end_lon"]), altitude_m=p.get("altitude", 30))
+            elif req.kind == "facade":
+                m = facade_scan(GeoPoint(p["start_lat"], p["start_lon"]), GeoPoint(p["end_lat"], p["end_lon"]))
+            elif req.kind == "reveal":
+                m = cinematic_reveal(GeoPoint(p["fg_lat"], p["fg_lon"]), GeoPoint(p["bg_lat"], p["bg_lon"]))
+            elif req.kind == "spiral":
+                m = spiraling_orbit(GeoPoint(p["lat"], p["lon"]))
+            elif req.kind == "vertical_pano":
+                m = vertical_panorama(GeoPoint(p["lat"], p["lon"]), altitude_m=p.get("altitude", 30))
+            else:
+                return {"error": f"unknown template kind: {req.kind}"}
+        except (KeyError, ValueError) as e:
+            return {"error": str(e)}
+        return {
+            "name": m.name,
+            "waypoints": [
+                {"lat": s.target.lat, "lon": s.target.lon, "alt": s.target.alt, "speed": s.speed_mps,
+                 "yaw": s.yaw_deg, "gimbal_pitch": s.gimbal_pitch_deg, "actions": list(s.actions)}
+                for s in m.steps
+            ],
+        }
+
+    @app.get("/api/profiles")
+    async def profiles():
+        from skycore.profiles import all_profiles
+        return {
+            "profiles": [
+                {
+                    "model": p.model, "family": p.family, "weight_g": p.weight_g,
+                    "max_horiz_speed_mps": p.max_horiz_speed_mps,
+                    "max_wind_resistance_kph": p.max_wind_resistance_kph,
+                    "max_flight_time_min": p.max_flight_time_min,
+                    "max_video_resolution": p.max_video_resolution,
+                    "transmission": p.transmission,
+                    "sdk_support": list(p.sdk_support),
+                }
+                for p in all_profiles()
+            ]
+        }
+
     @app.get("/api/flights")
     async def list_flights():
         if not db_path:
@@ -160,6 +245,21 @@ def create_app(drone: Drone, geofence: Optional[GeofenceConfig] = None, db_path:
         from skycore.storage import FlightDatabase
         with FlightDatabase(db_path) as fdb:
             return {"flights": fdb.list_flights(50)}
+
+    @app.get("/api/batteries")
+    async def list_batteries():
+        from skycore.battery import BatteryRegistry
+        path = (db_path or "skycore.db").replace("flights.db", "batteries.db")
+        try:
+            with BatteryRegistry(path) as reg:
+                return {"batteries": [
+                    {"serial": h.serial, "cycles": h.cycles, "heavy_dod": h.heavy_discharge_count,
+                     "health_pct": h.estimated_health_pct, "avg_min_voltage": h.avg_min_voltage,
+                     "last_used": h.last_used}
+                    for h in reg.list_all() if h is not None
+                ]}
+        except Exception as e:
+            return {"batteries": [], "error": str(e)}
 
     @app.websocket("/ws/telemetry")
     async def ws_telemetry(ws: WebSocket):
