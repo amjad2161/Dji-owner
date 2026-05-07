@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.venv/
+venv/
+env/
+ENV/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Drone artifacts (don't commit personal flight data)
+*.DAT
+*.dat
+*.flightlog
+*.txt.flight
+logs/
+flights/
+recordings/
+footage/
+*.mp4
+*.mov
+*.dng
+*.jpg.private
+
+# Generated
+.cache/
+*.log
