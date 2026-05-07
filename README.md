@@ -8,7 +8,7 @@
 
 ## What this is
 
-A curated, beginner-friendly playbook for DJI Mavic owners who want to push their drone to its full potential **using only official SDKs, supported tools, and legal community software**. No firmware patching. No No-Fly-Zone removal. No transmit-power boosting. Just everything you can legitimately do — explained well.
+A curated, beginner-friendly playbook for DJI Mavic owners who want to push their drone to its full potential **using only official SDKs, supported tools, and legal community software**. No firmware patching. No No-Fly-Zone removal. No transmit-power boosting. Just everything you can legitimately do — explained well, with real tools shipped in this repo.
 
 ## Who it's for
 
@@ -29,14 +29,45 @@ A curated, beginner-friendly playbook for DJI Mavic owners who want to push thei
 | 5 | [Log Analysis](docs/en/05-log-analysis.md) | Find issues before they become crashes |
 | 6 | [Live Streaming](docs/en/06-streaming.md) | Push your flight to YouTube / Twitch / Facebook live |
 
+## What's in this repo
+
+```
+dji-owner/
+├─ docs/                       Bilingual documentation (en + he)
+│  ├─ en/
+│  │  ├─ getting-started.md
+│  │  ├─ 01-pc-flight-control.md … 06-streaming.md
+│  │  ├─ compatibility-matrix.md  Per-drone capability table
+│  │  ├─ awesome-drone-repos.md   Curated open-source ecosystem
+│  │  └─ legal-and-safety.md
+│  └─ he/                       Hebrew
+├─ scripts/windows/
+│  ├─ install-toolkit.ps1       One-shot install of all GUI tools
+│  └─ clone-dev-repos.ps1       Clones the major drone SDKs
+├─ tools/
+│  └─ log-analyzer/             Python CLI for flight log health checks
+└─ presets/
+   └─ litchi-missions/          Ready-to-use waypoint missions
+```
+
 ## Quick start (Windows)
 
 ```powershell
-# Install the entire toolkit in one command (requires winget)
+# 1. Install the GUI toolset (DaVinci Resolve, OBS, Python, Git, scrcpy, VLC, ...)
 iwr https://raw.githubusercontent.com/amjad2161/dji-owner/main/scripts/windows/install-toolkit.ps1 -UseBasicParsing | iex
+
+# 2. Optional — clone every major drone SDK for development (DJI MSDK, OSDK,
+#    PSDK, MAVLink, Gyroflow, ODM, YOLO, BoxMOT, ...) into ~/dji-dev/
+iwr https://raw.githubusercontent.com/amjad2161/dji-owner/main/scripts/windows/clone-dev-repos.ps1 -UseBasicParsing | iex
 ```
 
 Prefer manual installation? Follow the [Getting Started guide](docs/en/getting-started.md).
+
+## Open-source ecosystem
+
+The drone ecosystem on GitHub is large. We track the legal, well-maintained, currently-relevant projects in the [Awesome Drone Repos catalog](docs/en/awesome-drone-repos.md) — official DJI SDKs, open flight stacks (PX4, ArduPilot), ground stations (QGroundControl, MAVSDK), Gyroflow, YOLO + tracking, OpenDroneMap, and the Tello-Python ecosystem for learners.
+
+The `clone-dev-repos.ps1` script pulls the most-used ones in one command.
 
 ## Compatibility quick view
 

@@ -8,7 +8,7 @@
 
 ## מה זה
 
-מדריך אוצר ומסודר למשתמשי Mavic שרוצים להוציא את המקסימום מהרחפן שלהם — **רק באמצעות SDK רשמיים, כלים נתמכים, ותוכנות קהילה חוקיות**. בלי תיקוני קושחה, בלי הסרת אזורי אי-טיסה, בלי הגברת הספק שידור. רק את כל מה שאפשר לעשות בצורה לגיטימית — מוסבר היטב.
+מדריך אוצר ומסודר למשתמשי Mavic שרוצים להוציא את המקסימום מהרחפן שלהם — **רק באמצעות SDK רשמיים, כלים נתמכים, ותוכנות קהילה חוקיות**. בלי תיקוני קושחה, בלי הסרת אזורי אי-טיסה, בלי הגברת הספק שידור. רק את כל מה שאפשר לעשות בצורה לגיטימית — מוסבר היטב, עם כלים אמיתיים שמסופקים בריפו הזה.
 
 ## למי זה מיועד
 
@@ -22,23 +22,39 @@
 
 | # | מסלול | מה תשיג |
 |---|-------|---------|
-| 1 | [שליטה מהמחשב](docs/he/getting-started.md) | טיסה בלי טלפון — לפטופ + שלט + ג'ויסטיק |
-| 2 | מעקב חכם | מעקב אובייקטים מעבר ל-ActiveTrack ברירת המחדל |
-| 3 | וידאו קולנועי | Pipeline פוסט: D-Log → Gyroflow → DaVinci Resolve |
-| 4 | תכנון משימות | Waypoints תלת-ממדיים, צילומים חוזרים, מיפוי |
-| 5 | ניתוח לוגים | זיהוי תקלות לפני שהן הופכות להתרסקויות |
-| 6 | שידור חי | שידור הטיסה ל-YouTube / Twitch / Facebook בזמן אמת |
+| 1 | [שליטה מהמחשב](docs/en/01-pc-flight-control.md) | טיסה בלי טלפון — לפטופ + שלט + ג'ויסטיק |
+| 2 | [מעקב חכם](docs/en/02-smart-tracking.md) | מעקב אובייקטים מעבר ל-ActiveTrack ברירת המחדל |
+| 3 | [וידאו קולנועי](docs/en/03-cinematic-video.md) | Pipeline פוסט: D-Log → Gyroflow → DaVinci Resolve |
+| 4 | [תכנון משימות](docs/en/04-mission-planning.md) | Waypoints תלת-ממדיים, צילומים חוזרים, מיפוי |
+| 5 | [ניתוח לוגים](docs/en/05-log-analysis.md) | זיהוי תקלות לפני שהן הופכות להתרסקויות |
+| 6 | [שידור חי](docs/en/06-streaming.md) | שידור הטיסה ל-YouTube / Twitch / Facebook בזמן אמת |
 
-התיעוד המלא כרגע באנגלית; ראה [docs/en/](docs/en/). תרגומי תיעוד לעברית מתקדמים — תרומות מתקבלות בברכה.
+## מה יש בריפו
+
+```
+dji-owner/
+├─ docs/                       תיעוד דו-לשוני (en + he)
+├─ scripts/windows/             סקריפטי PowerShell להתקנה ולהסדרה
+├─ tools/log-analyzer/         מנתח לוגים בפייתון
+└─ presets/litchi-missions/    תבניות משימות Litchi
+```
 
 ## התחלה מהירה (Windows)
 
 ```powershell
-# התקנה של כל הערכה בפקודה אחת (דורש winget)
+# 1. התקנת כל ה-GUI tools (DaVinci, OBS, Python, Git, scrcpy, VLC, ...)
 iwr https://raw.githubusercontent.com/amjad2161/dji-owner/main/scripts/windows/install-toolkit.ps1 -UseBasicParsing | iex
+
+# 2. אופציונלי — שכפול כל ה-SDKs (DJI MSDK, OSDK, PSDK, MAVLink, Gyroflow,
+#    ODM, YOLO, BoxMOT, ...) אל תוך ~/dji-dev/
+iwr https://raw.githubusercontent.com/amjad2161/dji-owner/main/scripts/windows/clone-dev-repos.ps1 -UseBasicParsing | iex
 ```
 
-להתקנה ידנית כלי-אחר-כלי, ראה [Getting Started](docs/en/getting-started.md).
+להתקנה ידנית, ראה [Getting Started](docs/en/getting-started.md).
+
+## המערכת הקהילתית
+
+הקטלוג המלא של הריפויים הקשורים ב-GitHub מתועד בקובץ [docs/en/awesome-drone-repos.md](docs/en/awesome-drone-repos.md): SDK רשמיים של DJI, מערכות קוד פתוח (PX4, ArduPilot), תחנות קרקע (QGroundControl, MAVSDK), Gyroflow, YOLO + tracking, OpenDroneMap, ו-Tello-Python ללומדים. הסקריפט `clone-dev-repos.ps1` מוריד את כולם בפקודה אחת.
 
 ## תאימות מהירה
 
