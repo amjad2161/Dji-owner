@@ -1,89 +1,114 @@
 # מרכז שליטה לרחפני DJI — Drone Mastery Hub
 
-> ערכת כלים קהילתית, חוקית לחלוטין, להוצאת המקסימום מרחפן ה-DJI Mavic שלך — בלי לשנות קושחה, בלי לעקוף מערכות בטיחות, ובלי להפר את חוקי התעופה.
+> ערכת כלים קהילתית, חוקית לחלוטין, להוצאת המקסימום מרחפן ה-DJI Mavic שלך. כוללת את **SkyCore** — רמת-ריצה פייתונית מאוחדת שמאגדה את כל כלי הקוד הפתוח המרכזיים בעולם הרחפנים ל-runtime אחד קוהרנטי.
 
 עברית · **[English](README.md)**
 
 ---
 
-## מה זה
+## שתי דרכים להשתמש
 
-מדריך אוצר ומסודר למשתמשי Mavic שרוצים להוציא את המקסימום מהרחפן שלהם — **רק באמצעות SDK רשמיים, כלים נתמכים, ותוכנות קהילה חוקיות**. בלי תיקוני קושחה, בלי הסרת אזורי אי-טיסה, בלי הגברת הספק שידור. רק את כל מה שאפשר לעשות בצורה לגיטימית — מוסבר היטב, עם כלים אמיתיים שמסופקים בריפו הזה.
+### 1. טייסים — התקן כלי GUI ועקוב אחרי המדריכים
 
-## למי זה מיועד
+המתקן ל-Windows וששת המסלולים העיקריים. ראה [Getting Started](docs/he/getting-started.md).
 
-- **טייסים חדשים** שזה עתה רכשו Mavic ורוצים מפת דרכים מלאה
-- **חובבים** שעברו את שלב DJI Fly ורוצים יותר
-- **יוצרי תוכן** שרודפים אחרי לקטעי וידאו קולנועיים
-- **צלמים ומומחי GIS** שבונים זרימות עבודה חוזרות
-- **מפתחים** שמוכנים לבנות מעל ה-DJI Mobile / Onboard SDK
+### 2. מפתחים — השתמש ב-SkyCore
+
+`skycore/` היא פלטפורמת הפעלה מואחדת לרחפנים. API אסינכרוני אחד מעל ה-DJI, MAVLink (PX4 / ArduPilot), Tello, וסימולטור מובנה. מפתחים משימות, ראייה ממוחשבת ו-dashboards בלי חומרה — אותו הקוד רץ מול כל מערכת.
+
+```python
+import asyncio
+from skycore import SimulatorDrone, GeoPoint
+from skycore.missions import orbit_mission
+
+async def main():
+    poi = GeoPoint(37.7749, -122.4194)
+    drone = SimulatorDrone(home=poi)
+    mission = orbit_mission(poi, radius_m=60, altitude_m=40, waypoints=12)
+    async with drone:
+        await mission.execute(drone)
+
+asyncio.run(main())
+```
+
+## מה ש-SkyCore כוללת
+
+| שכבה | מה היא עושה |
+|------|--------------|
+| **מתאמים** | Simulator, Tello, MAVLink, DJI bridge |
+| **ליבה** | ממשק `Drone`, `Telemetry`, `SafeDrone` (גדר גיאו + RTH + סוללה), `EventBus` |
+| **משימות** | מנוע waypoints, מחוללי orbit / lawnmower-survey, ייבוא/יצוא Litchi CSV |
+| **ראייה** | מזהה YOLO + מעקב BoT-SORT + בקר visual-follow |
+| **וידאו** | מקליט H.264/H.265, streamer RTMP, מעטפת Gyroflow CLI |
+| **אנליטיקה** | מנתח CSV לוגי טיסה עם `FlightSummary` מובנה |
+| **API** | FastAPI REST + WebSocket telemetry + dashboard כהה |
+| **CLI** | `skycore serve / mission / analyze` |
+| **דיפלוי** | `docker compose up` — סימולטור רצים על :8080 |
+
+התיעוד המלא: [docs/en/skycore-architecture.md](docs/en/skycore-architecture.md), [docs/en/skycore-getting-started.md](docs/en/skycore-getting-started.md).
 
 ## שישה מסלולי יכולת
 
 | # | מסלול | מה תשיג |
 |---|-------|---------|
-| 1 | [שליטה מהמחשב](docs/en/01-pc-flight-control.md) | טיסה בלי טלפון — לפטופ + שלט + ג'ויסטיק |
-| 2 | [מעקב חכם](docs/en/02-smart-tracking.md) | מעקב אובייקטים מעבר ל-ActiveTrack ברירת המחדל |
-| 3 | [וידאו קולנועי](docs/en/03-cinematic-video.md) | Pipeline פוסט: D-Log → Gyroflow → DaVinci Resolve |
-| 4 | [תכנון משימות](docs/en/04-mission-planning.md) | Waypoints תלת-ממדיים, צילומים חוזרים, מיפוי |
-| 5 | [ניתוח לוגים](docs/en/05-log-analysis.md) | זיהוי תקלות לפני שהן הופכות להתרסקויות |
-| 6 | [שידור חי](docs/en/06-streaming.md) | שידור הטיסה ל-YouTube / Twitch / Facebook בזמן אמת |
+| 1 | [שליטה מהמחשב](docs/en/01-pc-flight-control.md) | טיסה בלי טלפון |
+| 2 | [מעקב חכם](docs/en/02-smart-tracking.md) | מעקב אובייקטים מתקדם |
+| 3 | [וידאו קולנועי](docs/en/03-cinematic-video.md) | Pipeline פוסט מלא |
+| 4 | [תכנון משימות](docs/en/04-mission-planning.md) | Waypoints + מיפוי |
+| 5 | [ניתוח לוגים](docs/en/05-log-analysis.md) | זיהוי תקלות |
+| 6 | [שידור חי](docs/en/06-streaming.md) | YouTube / Twitch / Facebook |
 
-## מה יש בריפו
+## התחלה מהירה
 
-```
-dji-owner/
-├─ docs/                       תיעוד דו-לשוני (en + he)
-├─ scripts/windows/             סקריפטי PowerShell להתקנה ולהסדרה
-├─ tools/log-analyzer/         מנתח לוגים בפייתון
-└─ presets/litchi-missions/    תבניות משימות Litchi
-```
-
-## התחלה מהירה (Windows)
+### טייסים (כלי GUI ל-Windows)
 
 ```powershell
-# 1. התקנת כל ה-GUI tools (DaVinci, OBS, Python, Git, scrcpy, VLC, ...)
 iwr https://raw.githubusercontent.com/amjad2161/dji-owner/main/scripts/windows/install-toolkit.ps1 -UseBasicParsing | iex
+```
 
-# 2. אופציונלי — שכפול כל ה-SDKs (DJI MSDK, OSDK, PSDK, MAVLink, Gyroflow,
-#    ODM, YOLO, BoxMOT, ...) אל תוך ~/dji-dev/
+### מפתחים (SkyCore)
+
+```bash
+git clone https://github.com/amjad2161/dji-owner.git
+cd dji-owner
+pip install -e ".[api,analytics]"
+skycore serve --backend simulator     # → http://localhost:8080
+```
+
+או דרך Docker:
+
+```bash
+docker compose up
+```
+
+### שכפול כל ה-SDK המרכזיים
+
+```powershell
 iwr https://raw.githubusercontent.com/amjad2161/dji-owner/main/scripts/windows/clone-dev-repos.ps1 -UseBasicParsing | iex
 ```
 
-להתקנה ידנית, ראה [Getting Started](docs/en/getting-started.md).
-
-## המערכת הקהילתית
-
-הקטלוג המלא של הריפויים הקשורים ב-GitHub מתועד בקובץ [docs/en/awesome-drone-repos.md](docs/en/awesome-drone-repos.md): SDK רשמיים של DJI, מערכות קוד פתוח (PX4, ArduPilot), תחנות קרקע (QGroundControl, MAVSDK), Gyroflow, YOLO + tracking, OpenDroneMap, ו-Tello-Python ללומדים. הסקריפט `clone-dev-repos.ps1` מוריד את כולם בפקודה אחת.
+מוריד DJI MSDK / OSDK / PSDK / Tello-Python, PX4, ArduPilot, MAVSDK, QGroundControl, Gyroflow, YOLO, BoxMOT, OpenDroneMap, ו-DJITelloPy אל תוך `~/dji-dev/`.
 
 ## תאימות מהירה
 
-לא כל רחפן תומך בכל זרימה. בדוק את [טבלת התאימות המלאה](docs/en/compatibility-matrix.md) לפני שאתה מתחייב.
-
-| משפחה | טיסה ממחשב | Litchi | ActiveTrack | Mobile SDK | Onboard / Payload SDK |
-|-------|-------------|--------|-------------|------------|------------------------|
-| Mavic 3 / 3 Pro / 3 Cine | חלקי | ❌ | 5.0 | V5 | ❌ |
-| Mavic 3 Enterprise / Thermal | כן | ❌ | 5.0 | V5 | כן (PSDK) |
-| Mavic Air 3 / Air 2S / Air 2 | מוגבל | רק Air 2 | 4.0 / 5.0 | V5 / V4 | ❌ |
-| Mini 4 Pro / Mini 3 Pro | מוגבל | ❌ | 360° / 4.0 | V5 | ❌ |
-| Mini 2 / Mini SE | בסיסי | ❌ | ❌ | ❌ | ❌ |
-| Mavic 2 Pro / Zoom | כן | ✅ | 2.0 | V4 | ❌ |
-| Mavic Pro / Air 1 | כן | ✅ | 1.0 | V4 (legacy) | ❌ |
+| משפחה | טיסה ממחשב | Litchi | ActiveTrack | Mobile SDK | SkyCore דרך |
+|-------|-------------|--------|-------------|------------|-----------|
+| Mavic 3 / 3 Pro / 3 Cine | חלקי | ❌ | 5.0 | V5 | DJI bridge |
+| Mavic 3 Enterprise | כן | ❌ | 5.0 | V5 | PSDK |
+| Mavic Air 3 / 2S / 2 | מוגבל | רק Air 2 | 4.0 / 5.0 | V5 / V4 | DJI bridge |
+| Mini 4 Pro / 3 Pro | מוגבל | ❌ | 360° / 4.0 | V5 | DJI bridge |
+| Mini 2 / SE | בסיסי | ❌ | ❌ | ❌ | — |
+| Mavic 2 Pro / Zoom | כן | ✅ | 2.0 | V4 | DJI bridge (legacy) |
+| Tello / Tello EDU | Native | ❌ | n/a | Tello SDK | TelloDrone |
+| כל PX4 / ArduPilot | כן | ❌ | n/a | n/a | MavlinkDrone |
 
 ## חוקיות ובטיחות
 
-הפרויקט פועל **בתוך** ה-SDK של היצרן וכללי התעופה הלאומיים. אנחנו **לא** מפרסמים:
-
-- תיקוני קושחה שמשביתים אזורי אי-טיסה (NFZ / Geofencing)
-- כלים שחורגים מהספק שידור חוקי (מגבלות FCC / CE / MIC / SRRC)
-- שיטות לעקוף Remote ID
-- הסרת מגבלות גובה או מהירות מעבר למה ש-DJI חושף רשמית
-
-האחריות לציית לחוקים המקומיים (רת"א / FAA / EASA / וכו') היא שלך. ראה [legal-and-safety](docs/he/legal-and-safety.md) לפירוט.
+הפרויקט פועל **בתוך** ה-SDK של היצרן וכללי התעופה הלאומיים. אנחנו **לא** מפרסמים: הסרת NFZ, הגברת הספק שידור, עקיפת Remote ID, או הסרת מגבלות גובה/מהירות מעבר למה ש-DJI חושף רשמית. ראה [legal-and-safety](docs/he/legal-and-safety.md).
 
 ## סטטוס
 
-🚧 בשלב מוקדם, מונע קהילה. תרומות מתקבלות בברכה — ראה [CONTRIBUTING.md](CONTRIBUTING.md).
+🚧 Alpha. הליבה של SkyCore (סימולטור + משימות + אנליטיקה + API) נבדקה ועובדת. מתאמי חומרה אמיתית מממשים את אותו חוזה. תרומות מתקבלות בברכה — ראה [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## רישיון
 
