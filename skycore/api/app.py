@@ -1,12 +1,11 @@
 """FastAPI application that exposes SkyCore over HTTP + WebSocket.
 
 Serves:
-- REST API for commands (takeoff, land, goto, etc.)
+- REST API for flight commands (takeoff, land, goto, etc.)
 - WebSocket for live telemetry
 - Static dashboard (single HTML/JS page) at /
-
-The app is parameterized by a Drone instance so you can wire up any backend.
-Start it with `skycore serve` from the CLI, which defaults to the simulator.
+- Pre-flight checks: weather, terrain, geofence
+- Flight history from local SQLite
 """
 from __future__ import annotations
 
@@ -23,16 +22,14 @@ from skycore.core.types import GeoPoint, GeofenceConfig
 log = logging.getLogger(__name__)
 
 
-def create_app(drone: Drone, geofence: Optional[GeofenceConfig] = None):
+def create_app(drone: Drone, geofence: Optional[GeofenceConfig] = None, db_path: Optional[str] = None):
     try:
         from fastapi import FastAPI, WebSocket, WebSocketDisconnect
         from fastapi.responses import HTMLResponse, FileResponse
         from fastapi.staticfiles import StaticFiles
         from pydantic import BaseModel
     except ImportError as e:
-        raise ImportError(
-            "fastapi is required. Install with: pip install 'fastapi[standard]'"
-        ) from e
+        raise ImportError("fastapi is required. pip install 'fastapi[standard]'") from e
 
     bus = EventBus()
 
@@ -46,7 +43,7 @@ def create_app(drone: Drone, geofence: Optional[GeofenceConfig] = None):
             producer.cancel()
             await drone.disconnect()
 
-    app = FastAPI(title="SkyCore", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="SkyCore", version="0.2.0", lifespan=lifespan)
 
     class GotoRequest(BaseModel):
         lat: float
@@ -63,9 +60,19 @@ def create_app(drone: Drone, geofence: Optional[GeofenceConfig] = None):
     class TakeoffRequest(BaseModel):
         altitude: float = 5.0
 
+    class WeatherQuery(BaseModel):
+        lat: float
+        lon: float
+        max_wind_kph: float = 36.0
+        max_gust_kph: float = 50.0
+
+    class ElevationQuery(BaseModel):
+        lat: float
+        lon: float
+
     @app.get("/api/health")
     async def health():
-        return {"status": "ok", "drone": drone.name, "connected": drone.is_connected}
+        return {"status": "ok", "drone": drone.name, "connected": drone.is_connected, "version": "0.2.0"}
 
     @app.get("/api/telemetry")
     async def telemetry():
@@ -116,6 +123,43 @@ def create_app(drone: Drone, geofence: Optional[GeofenceConfig] = None):
     async def record_stop():
         await drone.stop_recording()
         return {"ok": True}
+
+    @app.post("/api/preflight/weather")
+    async def preflight_weather(req: WeatherQuery):
+        from skycore.weather import preflight_check
+        loop = asyncio.get_running_loop()
+        ok, issues, snap = await loop.run_in_executor(
+            None, preflight_check, req.lat, req.lon, req.max_wind_kph, req.max_gust_kph
+        )
+        return {
+            "ok": ok,
+            "issues": issues,
+            "weather": {
+                "temperature_c": snap.temperature_c,
+                "wind_kph": snap.wind_speed_kph,
+                "gust_kph": snap.wind_gust_kph,
+                "wind_direction": snap.wind_direction_deg,
+                "precipitation_mm_h": snap.precipitation_mm_h,
+                "cloud_pct": snap.cloud_cover_pct,
+                "pressure_hpa": snap.pressure_hpa,
+                "humidity_pct": snap.humidity_pct,
+            },
+        }
+
+    @app.post("/api/preflight/elevation")
+    async def preflight_elevation(req: ElevationQuery):
+        from skycore.terrain import get_elevation
+        loop = asyncio.get_running_loop()
+        e = await loop.run_in_executor(None, get_elevation, req.lat, req.lon)
+        return {"elevation_m_amsl": e}
+
+    @app.get("/api/flights")
+    async def list_flights():
+        if not db_path:
+            return {"flights": [], "note": "no db configured"}
+        from skycore.storage import FlightDatabase
+        with FlightDatabase(db_path) as fdb:
+            return {"flights": fdb.list_flights(50)}
 
     @app.websocket("/ws/telemetry")
     async def ws_telemetry(ws: WebSocket):

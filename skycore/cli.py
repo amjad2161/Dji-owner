@@ -23,7 +23,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 
 @click.group()
-@click.version_option("0.1.0")
+@click.version_option("0.2.0")
 def cli():
     """SkyCore — unified drone operations CLI."""
 
@@ -76,6 +76,54 @@ def analyze(csv_path):
     click.echo("=" * 60)
 
 
+@cli.command()
+@click.option("--lat", required=True, type=float)
+@click.option("--lon", required=True, type=float)
+@click.option("--max-wind", default=36.0, type=float, help="Max sustained wind kph")
+@click.option("--max-gust", default=50.0, type=float, help="Max gust kph")
+def weather(lat, lon, max_wind, max_gust):
+    """Pre-flight weather check via Open-Meteo (no API key needed)."""
+    from skycore.weather import preflight_check
+    ok, issues, snap = preflight_check(lat, lon, max_wind_kph=max_wind, max_gust_kph=max_gust)
+    click.echo(f"Conditions at ({lat:.4f}, {lon:.4f}):")
+    click.echo(f"  Temperature:   {snap.temperature_c:5.1f} °C")
+    click.echo(f"  Wind:          {snap.wind_speed_kph:5.1f} kph @ {snap.wind_direction_deg:.0f}°")
+    click.echo(f"  Gust:          {snap.wind_gust_kph:5.1f} kph")
+    click.echo(f"  Precipitation: {snap.precipitation_mm_h:5.2f} mm/h")
+    click.echo(f"  Cloud cover:   {snap.cloud_cover_pct:5.0f} %")
+    click.echo("")
+    if ok:
+        click.secho("✓ Safe to fly", fg="green")
+    else:
+        click.secho("✗ NOT safe to fly:", fg="red")
+        for issue in issues:
+            click.echo(f"  - {issue}")
+        sys.exit(2)
+
+
+@cli.command()
+@click.option("--lat", required=True, type=float)
+@click.option("--lon", required=True, type=float)
+def elevation(lat, lon):
+    """Look up terrain elevation at a point (Open-Elevation)."""
+    from skycore.terrain import get_elevation
+    e = get_elevation(lat, lon)
+    click.echo(f"Elevation at ({lat:.4f}, {lon:.4f}): {e:.1f} m AMSL")
+
+
+@cli.command(name="golden-hour")
+@click.option("--lat", required=True, type=float)
+@click.option("--lon", required=True, type=float)
+def golden_hour(lat, lon):
+    """Compute today's golden-hour windows for a location."""
+    from skycore.scheduler import golden_hour_at
+    sunrise, m_end, e_start, sunset = golden_hour_at(lat, lon)
+    click.echo(f"Sunrise:        {sunrise.strftime('%H:%M UTC')}")
+    click.echo(f"Morning ends:   {m_end.strftime('%H:%M UTC')}")
+    click.echo(f"Evening begins: {e_start.strftime('%H:%M UTC')}")
+    click.echo(f"Sunset:         {sunset.strftime('%H:%M UTC')}")
+
+
 @cli.group()
 def mission():
     """Mission planning & generation."""
@@ -126,6 +174,26 @@ def mission_run(csv_path, backend, connection_url):
         async with drone:
             await m.execute(drone)
     asyncio.run(go())
+
+
+@cli.group()
+def flights():
+    """Flight history (SQLite)."""
+
+
+@flights.command("list")
+@click.option("--db", default="skycore.db", type=click.Path())
+@click.option("--limit", default=20, type=int)
+def flights_list(db, limit):
+    """List recent flights from the local database."""
+    from skycore.storage import FlightDatabase
+    with FlightDatabase(db) as fdb:
+        rows = fdb.list_flights(limit)
+    if not rows:
+        click.echo("No flights recorded.")
+        return
+    for r in rows:
+        click.echo(f"#{r['id']:>4}  {r['drone']:<12}  {r['started_at']}  →  {r['ended_at'] or '...'}")
 
 
 def _make_drone(backend: str, connection_url: str | None, home: GeoPoint | None):
