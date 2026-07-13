@@ -25,6 +25,12 @@ export class AdsBService {
   private monitoring = false;
   private updateInterval: ReturnType<typeof setInterval> | null = null;
 
+  // Live threats from the real backend C-UAS classifier (ws /ws/threats)
+  private threatWs: WebSocket | null = null;
+  private backendThreats: Threat[] = [];
+  private backendDetectBackend = '';
+  private threatReconnect = 0;
+
   // Threat thresholds
   private readonly SAFE_DISTANCE_M = 5000;
   private readonly WARNING_DISTANCE_M = 2000;
@@ -50,7 +56,48 @@ export class AdsBService {
       this.evaluateThreats();
     }, 1000);
 
+    // Also consume real C-UAS classifier threats from the backend
+    this.connectBackendThreats();
+
     console.log('ADS-B monitoring started');
+  }
+
+  private connectBackendThreats(): void {
+    if (this.threatWs?.readyState === WebSocket.OPEN) return;
+    try {
+      const url = `ws://${window.location.hostname}:8080/ws/threats`;
+      const ws = new WebSocket(url);
+      this.threatWs = ws;
+      ws.onopen = () => { this.threatReconnect = 0; console.log('C-UAS threat feed connected'); };
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.backendDetectBackend = data.detect_backend ?? '';
+          this.backendThreats = (data.threats ?? []).map((t: {
+            id: string; type: string; severity: ThreatLevel; distance: number; bearing: number; timestamp: number;
+          }) => ({
+            id: t.id,
+            type: t.type,
+            severity: (t.severity === 'none' ? 'low' : t.severity) as Threat['severity'],
+            distance: t.distance,
+            bearing: t.bearing,
+            timestamp: new Date(t.timestamp),
+          }));
+        } catch (e) {
+          console.error('Failed to parse threat feed:', e);
+        }
+      };
+      ws.onclose = () => {
+        this.backendThreats = [];
+        if (this.monitoring && this.threatReconnect < 5) {
+          this.threatReconnect++;
+          setTimeout(() => this.connectBackendThreats(), 2000 * this.threatReconnect);
+        }
+      };
+      ws.onerror = () => { /* onclose handles retry */ };
+    } catch (e) {
+      console.error('Threat feed connect failed:', e);
+    }
   }
 
   public stopMonitoring(): void {
@@ -58,6 +105,11 @@ export class AdsBService {
       clearInterval(this.updateInterval);
       this.updateInterval = null;
     }
+    if (this.threatWs) {
+      this.threatWs.close();
+      this.threatWs = null;
+    }
+    this.backendThreats = [];
     this.monitoring = false;
     console.log('ADS-B monitoring stopped');
   }
@@ -192,17 +244,27 @@ export class AdsBService {
     return Array.from(this.contacts.values());
   }
 
+  // Real backend C-UAS threats first, then simulated ADS-B contacts
+  private merged(): Threat[] {
+    return [...this.backendThreats, ...this.threats];
+  }
+
+  public getDetectBackend(): string {
+    return this.backendDetectBackend;
+  }
+
   public getAllThreats(): Threat[] {
-    return this.threats;
+    return this.merged();
   }
 
   public getThreatStats(): { total: number; critical: number; high: number; medium: number; low: number } {
+    const all = this.merged();
     return {
-      total: this.threats.length,
-      critical: this.threats.filter(t => t.severity === 'critical').length,
-      high: this.threats.filter(t => t.severity === 'high').length,
-      medium: this.threats.filter(t => t.severity === 'medium').length,
-      low: this.threats.filter(t => t.severity === 'low').length
+      total: all.length,
+      critical: all.filter(t => t.severity === 'critical').length,
+      high: all.filter(t => t.severity === 'high').length,
+      medium: all.filter(t => t.severity === 'medium').length,
+      low: all.filter(t => t.severity === 'low').length
     };
   }
 

@@ -1,23 +1,24 @@
 """
-SkyCore live backend.
+SkyCore live backend — driven by REAL skycore algorithms.
 
-Serves telemetry + accepts flight commands over WebSocket in the exact shape the
-SkyCore GCS expects (ws://<host>:8080/ws/telemetry).
+Serves telemetry + flight commands (ws /ws/telemetry) and a threat feed
+(ws /ws/threats) in the shapes the SkyCore GCS expects.
 
-HONEST design:
-  - A physics-lite SIMULATOR generates ground truth (battery drain, climb, motion
-    toward waypoints) over real time.
-  - Noisy "GPS" measurements are fed to the REAL skycore 22-state Adaptive UKF
-    (skycore/navigation/aukf.py). The telemetry the GCS shows is the FILTER'S
-    estimate, not the raw truth. So the live demo runs on the genuine navigation
-    algorithm.
-  - Every frame is tagged source="simulator" and reports which nav backend is
-    active. No physical drone is claimed. If the real AUKF can't be imported or
-    goes non-finite, we fall back to raw truth and say so (backend="raw-truth").
+HONEST design — a physics-lite SIMULATOR generates ground truth; three GENUINE
+skycore modules run in the live loop:
+  - navigation: 22-state Adaptive UKF (skycore/navigation/aukf.py) filters noisy GPS.
+  - control:    LQRController (skycore/control/lqr.py) flies the aircraft closed-loop
+                (point-mass double-integrator in ENU metres).
+  - detection:  CUASClassifier (skycore/cuas/classifier.py) classifies a SIMULATED
+                intruder track into a severity-graded threat for the GCS Threats page.
+Every frame is tagged source="simulator" and reports which real backend is active.
+No physical drone / real RF sensing is claimed. If any real module can't import or
+goes non-finite, we fall back and say so (backend name reflects it). Detection/alerting
+only — no jamming / countermeasure capability.
 
 Run:  python serve.py
-Deps: fastapi, uvicorn[standard], numpy
-Env:  SKYCORE_NAV=<path to skycore/navigation> to override AUKF discovery.
+Deps: fastapi, uvicorn[standard], numpy, scipy
+Env:  SKYCORE_PKG=<path to skycore package dir> to override module discovery.
 """
 from __future__ import annotations
 
@@ -28,43 +29,58 @@ import random
 import sys
 import time
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-
-# --- locate + import the REAL 22-state AUKF (honest provenance, like reference/sky.py) ---
-_here = os.path.dirname(os.path.abspath(__file__))
-_NAV_CANDIDATES = [
-    os.environ.get("SKYCORE_NAV", ""),
-    os.path.join(_here, "..", "..", "src", "skycore_v1.0.0", "skycore", "navigation"),
-    os.path.join(_here, "..", "src", "skycore_v1.0.0", "skycore", "navigation"),
-    r"C:\Users\Mobar\OneDrive\Desktop\SkyCore_Consolidated\src\skycore_v1.0.0\skycore\navigation",
-]
-AdaptiveUKF = None
-NAV_BACKEND = "raw-truth"
-for _cand in _NAV_CANDIDATES:
-    if _cand and os.path.isfile(os.path.join(_cand, "aukf.py")):
-        sys.path.insert(0, _cand)
-        try:
-            from aukf import AdaptiveUKF  # type: ignore
-            NAV_BACKEND = "skycore.navigation.aukf.AdaptiveUKF (22-state)"
-            break
-        except Exception:
-            AdaptiveUKF = None
 
 try:
     import numpy as np
 except Exception:
     np = None
-    AdaptiveUKF = None
-    NAV_BACKEND = "raw-truth"
+
+# --- locate the real skycore package and import its modules directly (avoids
+#     package __init__ side effects), mirroring the honest provenance pattern. ---
+_here = os.path.dirname(os.path.abspath(__file__))
+_PKG_CANDIDATES = [
+    os.environ.get("SKYCORE_PKG", ""),
+    os.path.join(_here, "..", "..", "src", "skycore_v1.0.0", "skycore"),
+    os.path.join(_here, "..", "src", "skycore_v1.0.0", "skycore"),
+    r"C:\Users\Mobar\OneDrive\Desktop\SkyCore_Consolidated\src\skycore_v1.0.0\skycore",
+]
+AdaptiveUKF = LQRController = CUASClassifier = ThreatFeatures = None
+NAV_BACKEND = CTRL_BACKEND = DETECT_BACKEND = "unavailable"
+if np is not None:
+    for _pkg in _PKG_CANDIDATES:
+        if _pkg and os.path.isdir(_pkg):
+            for _sub in ("navigation", "control", "cuas"):
+                sys.path.insert(0, os.path.join(_pkg, _sub))
+            try:
+                from aukf import AdaptiveUKF  # type: ignore
+                NAV_BACKEND = "skycore.navigation.aukf.AdaptiveUKF (22-state)"
+            except Exception:
+                AdaptiveUKF = None
+            try:
+                from lqr import LQRController  # type: ignore
+                CTRL_BACKEND = "skycore.control.lqr.LQRController (point-mass ENU)"
+            except Exception:
+                LQRController = None
+            try:
+                from classifier import CUASClassifier, ThreatFeatures  # type: ignore
+                DETECT_BACKEND = "skycore.cuas.classifier.CUASClassifier (rule-based)"
+            except Exception:
+                CUASClassifier = None
+            break
 
 HOME_LAT, HOME_LON = 32.0853, 34.7818
-CLIMB_RATE = 2.5
-CRUISE_SPEED = 9.0
-BATTERY_DRAIN = 0.06
 TICK_HZ = 10.0
-GPS_NOISE_H = 1.2   # metres, horizontal 1-sigma
-GPS_NOISE_V = 0.6   # metres, vertical
+FDT = 1.0 / TICK_HZ           # fixed dt for control/plant discretisation
+ACCEL_CLIP = 4.0              # m/s^2, keeps motion drone-like
+CLIMB_RATE = 2.5             # m/s, naive-fallback only
+CRUISE_SPEED = 9.0          # m/s, naive-fallback only
+BATTERY_DRAIN = 0.06
+GPS_NOISE_H, GPS_NOISE_V = 1.2, 0.6
+INTRUDER_SPEED = 12.0
+MAX_H_SPEED = 16.0           # m/s horizontal velocity envelope (drone-like)
+MAX_V_SPEED = 4.0           # m/s vertical velocity envelope
 M_PER_DEG_LAT = 111_320.0
 M_PER_DEG_LON = M_PER_DEG_LAT * math.cos(math.radians(HOME_LAT))
 
@@ -75,9 +91,7 @@ class SimState:
     def __init__(self) -> None:
         self.mode = "DISARMED"
         self.armed = False
-        self.e = 0.0   # east  (m)
-        self.n = 0.0   # north (m)
-        self.u = 0.0   # up    (m)
+        self.e = self.n = self.u = 0.0
         self.tgt_e: float | None = None
         self.tgt_n: float | None = None
         self.tgt_u = 0.0
@@ -86,16 +100,45 @@ class SimState:
         self.ve = self.vn = self.vu = 0.0
         self._t = time.monotonic()
 
-        # real filter
+        # real navigation filter
         self.filter = None
-        self.backend = NAV_BACKEND
+        self.nav_backend = NAV_BACKEND
         self.nis = 0.0
         if AdaptiveUKF is not None:
             try:
                 self.filter = AdaptiveUKF()
                 self.filter.initialize(0, 0, 0, 0, 0, 0)
             except Exception:
-                self.filter, self.backend = None, "raw-truth"
+                self.filter, self.nav_backend = None, "raw-truth"
+        else:
+            self.nav_backend = "raw-truth"
+
+        # real control law (LQR on 6-state ENU double integrator)
+        self.lqr = None
+        self.control_backend = "naive-mover"
+        if LQRController is not None and np is not None:
+            try:
+                A = np.eye(6); A[:3, 3:] = np.eye(3) * FDT
+                B = np.zeros((6, 3)); B[3:, :] = np.eye(3) * FDT
+                Q = np.diag([8.0, 8.0, 8.0, 4.0, 4.0, 4.0])
+                R = np.eye(3) * 0.5
+                self.lqr = LQRController(A, B, Q, R)
+                self._A, self._B = A, B
+                self.control_backend = CTRL_BACKEND
+            except Exception:
+                self.lqr = None
+
+        # real C-UAS detection + a SIMULATED intruder track
+        self.clf = None
+        self.detect_backend = "none"
+        self.threats: list[dict] = []
+        self.intr_e, self.intr_n, self.intr_u = 400.0, 0.0, 80.0
+        if CUASClassifier is not None:
+            try:
+                self.clf = CUASClassifier(sensitivity=0.5)
+                self.detect_backend = DETECT_BACKEND
+            except Exception:
+                self.clf = None
 
     # ---- commands (mirror GCS TelemetryService.sendCommand) ----
     def command(self, cmd: str, p: dict) -> None:
@@ -121,7 +164,7 @@ class SimState:
             self.tgt_u = float(p.get("altitude", self.u))
             self.mode = "FLYING"
 
-    # ---- time evolution (ground truth) ----
+    # ---- time evolution ----
     def step(self) -> None:
         now = time.monotonic()
         dt = now - self._t
@@ -134,7 +177,53 @@ class SimState:
         if self.battery <= 0.0 and self.mode != "DISARMED":
             self.mode, self.tgt_e, self.tgt_n, self.tgt_u = "LANDING", None, None, 0.0
 
-        # vertical
+        if self.lqr is not None:
+            try:
+                self._lqr_step()
+            except Exception:
+                self.lqr, self.control_backend = None, "naive-mover (LQR diverged)"
+                self._naive_step()
+        else:
+            self._naive_step()
+
+        # mode transitions (read self.u + target distance)
+        if self.mode == "TAKEOFF" and self.u >= self.tgt_u - 0.2:
+            self.mode = "FLYING"
+        elif self.mode == "RTL" and self.tgt_e is None and self.u > 0.5:
+            self.tgt_u, self.mode = 0.0, "LANDING"
+        elif self.mode == "LANDING" and self.u <= 0.15:
+            self.u, self.armed, self.mode = 0.0, False, "DISARMED"
+
+        self._detect_step()
+        self._filter_step(dt)
+
+    def _lqr_step(self) -> None:
+        x = np.array([self.e, self.n, self.u, self.ve, self.vn, self.vu])
+        des_e = self.tgt_e if self.tgt_e is not None else self.e
+        des_n = self.tgt_n if self.tgt_n is not None else self.n
+        x_des = np.array([des_e, des_n, self.tgt_u, 0.0, 0.0, 0.0])
+        if self.u <= 0.5:                       # no horizontal command until airborne
+            x_des[0], x_des[1] = self.e, self.n
+        u = np.clip(self.lqr.compute(x, x_des), -ACCEL_CLIP, ACCEL_CLIP)
+        xn = self._A @ x + self._B @ u
+        if not np.all(np.isfinite(xn)):
+            raise ValueError("non-finite")
+        # drone-like velocity envelope
+        vh = math.hypot(xn[3], xn[4])
+        if vh > MAX_H_SPEED:
+            xn[3] *= MAX_H_SPEED / vh
+            xn[4] *= MAX_H_SPEED / vh
+        xn[5] = max(-MAX_V_SPEED, min(MAX_V_SPEED, xn[5]))
+        self.e, self.n = float(xn[0]), float(xn[1])
+        self.u = max(0.0, float(xn[2]))
+        self.ve, self.vn, self.vu = float(xn[3]), float(xn[4]), float(xn[5])
+        if math.hypot(self.ve, self.vn) > 0.1:
+            self.heading = (math.degrees(math.atan2(self.ve, self.vn)) + 360) % 360
+        if self.tgt_e is not None and math.hypot(self.tgt_e - self.e, self.tgt_n - self.n) < 0.6:
+            self.tgt_e = self.tgt_n = None       # reached waypoint -> hold
+
+    def _naive_step(self) -> None:
+        dt = FDT
         self.vu = 0.0
         if abs(self.u - self.tgt_u) > 0.05:
             d = math.copysign(min(CLIMB_RATE * dt, abs(self.tgt_u - self.u)), self.tgt_u - self.u)
@@ -142,8 +231,6 @@ class SimState:
             self.vu = d / dt
         else:
             self.u = self.tgt_u
-
-        # horizontal
         self.ve = self.vn = 0.0
         if self.tgt_e is not None and self.tgt_n is not None and self.u > 0.5:
             de, dn = self.tgt_e - self.e, self.tgt_n - self.n
@@ -157,25 +244,47 @@ class SimState:
             else:
                 self.e, self.n, self.tgt_e, self.tgt_n = self.tgt_e, self.tgt_n, None, None
 
-        # mode transitions
-        if self.mode == "TAKEOFF" and self.u >= self.tgt_u - 0.1:
-            self.mode = "FLYING"
-        elif self.mode == "RTL" and self.tgt_e is None and self.u > 0.5:
-            self.tgt_u, self.mode = 0.0, "LANDING"
-        elif self.mode == "LANDING" and self.u <= 0.1:
-            self.u, self.armed, self.mode = 0.0, False, "DISARMED"
-
-        self._filter_step(dt)
+    def _detect_step(self) -> None:
+        if self.clf is None or ThreatFeatures is None:
+            return
+        # advance the SIMULATED intruder: closes on home from the east, descending
+        self.intr_e -= INTRUDER_SPEED * FDT
+        dist_home = math.hypot(self.intr_e, self.intr_n)
+        self.intr_u = 30.0 + min(1.0, dist_home / 400.0) * 50.0   # 80 m far -> 30 m near
+        if self.intr_e < -60.0:                                    # passed us -> respawn
+            self.intr_e = 400.0
+        try:
+            # threat geometry is relative to the defended point (home = 0,0,0)
+            dist = math.sqrt(self.intr_e ** 2 + self.intr_n ** 2 + self.intr_u ** 2)
+            bearing = (math.degrees(math.atan2(self.intr_e, self.intr_n)) + 360) % 360
+            feat = ThreatFeatures(
+                radar_cross_section_db=-18.0, ground_speed_m_s=INTRUDER_SPEED,
+                altitude_m=self.intr_u, vertical_speed_m_s=0.0, size_m=0.8,
+                signal_strength_db=-70.0, track_direction_deg=bearing,
+                jammer_present=False, last_seen_sec=time.time(),
+            )
+            r = self.clf.classify(feat)
+            sev = {0: "low", 1: "low", 2: "medium", 3: "high", 4: "critical"}[r.threat_level.value]
+            self.threats = [{
+                "id": "intruder-1",
+                "type": r.category.value,
+                "severity": sev,
+                "distance": round(dist, 1),
+                "bearing": round(bearing, 1),
+                "confidence": round(r.confidence, 2),
+                "timestamp": round(r.timestamp * 1000.0),   # ms, for JS new Date()
+            }]
+        except Exception:
+            self.threats, self.detect_backend = [], "none (classify failed)"
 
     def _filter_step(self, dt: float) -> None:
-        """Feed noisy measurements of ground truth into the real AUKF."""
         if self.filter is None or np is None:
             return
         try:
             self.filter.predict(np.array([0.0, 0.0, -9.81]), np.zeros(3), dt)
             gps = {
-                "lat": self.n + random.gauss(0, GPS_NOISE_H),   # north
-                "lon": self.e + random.gauss(0, GPS_NOISE_H),   # east
+                "lat": self.n + random.gauss(0, GPS_NOISE_H),
+                "lon": self.e + random.gauss(0, GPS_NOISE_H),
                 "alt": self.u + random.gauss(0, GPS_NOISE_V),
                 "vx": self.vn, "vy": self.ve, "vz": self.vu,
             }
@@ -184,11 +293,9 @@ class SimState:
             if not np.all(np.isfinite(self.filter.x)):
                 raise ValueError("non-finite state")
         except Exception:
-            # honest fallback: drop to raw truth, stop pretending the filter is live
-            self.filter, self.backend = None, "raw-truth (AUKF diverged)"
+            self.filter, self.nav_backend = None, "raw-truth (AUKF diverged)"
 
-    def _estimate_enu(self) -> tuple[float, float, float, float]:
-        """Return (north, east, up, speed) — filtered if AUKF live, else raw truth."""
+    def _estimate_enu(self):
         if self.filter is not None:
             n, e, u = self.filter.get_position_llh()
             vn, ve, vu = self.filter.get_velocity_ned()
@@ -199,7 +306,9 @@ class SimState:
         n, e, u, speed = self._estimate_enu()
         return {
             "source": "simulator",
-            "nav_backend": self.backend,
+            "nav_backend": self.nav_backend,
+            "control_backend": self.control_backend,
+            "detect_backend": self.detect_backend,
             "nav_nis": round(self.nis, 2),
             "mode": self.mode,
             "armed": self.armed,
@@ -213,9 +322,12 @@ class SimState:
             "attitude": {"yaw": round(self.heading, 1)},
         }
 
+    def threat_feed(self) -> dict:
+        return {"source": "simulator", "detect_backend": self.detect_backend, "threats": self.threats}
+
 
 state = SimState()
-app = FastAPI(title="SkyCore Live Backend (real AUKF)", version="2.0")
+app = FastAPI(title="SkyCore Live Backend (real AUKF + LQR + C-UAS)", version="3.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -230,12 +342,21 @@ async def _start() -> None:
 
 @app.get("/")
 async def root() -> dict:
-    return {"service": "SkyCore Live Backend", "status": "running", "nav_backend": state.backend}
+    return {
+        "service": "SkyCore Live Backend", "status": "running",
+        "nav_backend": state.nav_backend, "control_backend": state.control_backend,
+        "detect_backend": state.detect_backend,
+    }
 
 
 @app.get("/telemetry")
 async def telemetry() -> dict:
     return state.snapshot()
+
+
+@app.get("/threats")
+async def threats() -> dict:
+    return state.threat_feed()
 
 
 @app.websocket("/ws/telemetry")
@@ -264,7 +385,18 @@ async def ws_telemetry(ws: WebSocket) -> None:
         recv.cancel()
 
 
+@app.websocket("/ws/threats")
+async def ws_threats(ws: WebSocket) -> None:
+    await ws.accept()
+    try:
+        while True:
+            await ws.send_json(state.threat_feed())
+            await asyncio.sleep(0.5)
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
     import uvicorn
-    print(f"SkyCore live backend on http://0.0.0.0:8080  | nav backend: {state.backend}", flush=True)
+    print(f"SkyCore live backend :8080 | nav={state.nav_backend} | ctrl={state.control_backend} | detect={state.detect_backend}", flush=True)
     uvicorn.run(app, host="0.0.0.0", port=8080, log_level="warning")

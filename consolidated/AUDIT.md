@@ -53,8 +53,9 @@ No file implements RF jamming, Remote-ID spoofing/defeat, firmware rooting/patch
 
 The working subset, made genuinely runnable and wired together live:
 - `gcs-web/` — the React GCS, with its missing Vite build files added and a real browser-env bug fixed (`process.env` → `import.meta.env`). **Builds and runs.**
-- `backend/serve.py` — a clean, honest live server. A simulator drives ground truth (battery drain, climb, waypoint motion); noisy GPS is filtered by the **real 22-state `skycore/navigation/aukf.py`**, and the filter's estimate is streamed in the exact shape the GCS expects. Every frame is tagged `source:"simulator"` + `nav_backend`.
-- Verified end-to-end: browser **Takeoff** → WebSocket command → simulator flies → **real AUKF** filters it → live telemetry (FLYING, altitude climbing, battery draining) back in the GCS. A `goto` waypoint test tracked at ~9 m/s with ~0.4 m filter error, AUKF stable throughout.
+- `backend/serve.py` — a clean, honest live server running **three genuine skycore modules** against a simulator: the **22-state AUKF** (`navigation/aukf.py`) filters telemetry, the **`LQRController`** (`control/lqr.py`) flies closed-loop, and the **`CUASClassifier`** (`cuas/classifier.py`) grades a simulated intruder into a `/ws/threats` feed. Every frame is tagged `source:"simulator"` + `nav_backend`/`control_backend`/`detect_backend`; each module has an honest fallback if it errors.
+- New real **Threats page** + `AdsBService` wired to `/ws/threats` so the classifier's verdict renders in the GCS.
+- Verified end-to-end in the browser: **Takeoff/goto** → LQR flies to waypoints at ~16 m/s while the AUKF filters (~0.4 m error), and the Threats page shows `intruder-1 / commercial_drone / critical` closing on home — all sourced from the real modules.
 
 ## Suggested next steps
 
@@ -62,4 +63,4 @@ The working subset, made genuinely runnable and wired together live:
 2. Fix the canonical `api/main.py` to serve real evolving telemetry in the GCS shape (fold in `backend/serve.py`), and fix its fragile bare `core.` imports.
 3. Delete theater/fake modules listed above.
 4. Collapse the 145 docs to a handful of accurate ones; retire the inflated claims.
-5. The real AUKF is now wired behind `serve.py`. Next: drive the genuine **control** (PID/MPC/LQR) and **C-UAS detection** modules from the live loop too.
+5. Real AUKF navigation, LQR control, and CUASClassifier detection are now wired behind `serve.py`. Next: flesh out the remaining GCS stub pages (Missions/Video/Telemetry/AI Chat) against the backend.

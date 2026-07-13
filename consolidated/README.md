@@ -5,15 +5,19 @@ archive: a real Ground Control Station web app + a live simulator backend, wired
 together and verified end-to-end. For the honest inventory of the whole archive
 (what's real vs. marketing), see [`AUDIT.md`](./AUDIT.md).
 
-> **Honesty note.** A **software simulator** generates ground truth (battery drains,
-> the aircraft climbs and flies to waypoints over real time). Noisy GPS measurements
-> of that truth are filtered by the **real skycore 22-state Adaptive UKF**
-> (`src/skycore_v1.0.0/skycore/navigation/aukf.py`) — so the telemetry the GCS shows
-> is the genuine navigation filter's estimate, and every frame reports
-> `nav_backend: "skycore.navigation.aukf.AdaptiveUKF (22-state)"` and its live `nav_nis`.
-> No physical drone is connected, every frame is tagged `source: "simulator"`, and
-> nothing here claims otherwise. To fly real hardware, point the GCS at a backend that
-> speaks the same `/ws/telemetry` contract.
+> **Honesty note.** A **software simulator** generates ground truth over real time.
+> Three GENUINE skycore modules run in the live loop against it:
+> - **navigation** — the real 22-state Adaptive UKF (`navigation/aukf.py`) filters noisy
+>   GPS; the telemetry the GCS shows is the filter's estimate (`nav_backend`, live `nav_nis`).
+> - **control** — the real `LQRController` (`control/lqr.py`) flies the aircraft closed-loop
+>   to its targets (`control_backend`).
+> - **detection** — the real `CUASClassifier` (`cuas/classifier.py`) classifies a **simulated**
+>   intruder track into a severity-graded threat shown on the Threats page (`detect_backend`).
+>
+> No physical drone and no real RF sensing are connected; every frame is tagged
+> `source: "simulator"` and reports which real backend is active. Detection/alerting only —
+> no jamming or countermeasure capability. To fly real hardware, point the GCS at a backend
+> that speaks the same `/ws/telemetry` + `/ws/threats` contract.
 
 ## Legal boundary
 
@@ -88,11 +92,15 @@ VITE_OPENROUTER_API_KEY=sk-or-...
   `serve.py`, which evolves state over real time and emits the exact shape the GCS's
   `TelemetryService` reads (`battery.percent`, `position.{lat,lon,altitude}`,
   `velocity.speed`, `attitude.yaw`, `mode`) and handles `arm/disarm/takeoff/land/rtl/goto`.
-- **Wired the real 22-state AUKF into the live loop** — `serve.py` imports the genuine
-  `skycore/navigation/aukf.py`, feeds it noisy GPS measurements in a local-ENU-metre frame
-  (the filter integrates `pos += vel·dt`, so lat/lon degrees would blow it up), and streams
-  the filter's estimate. Verified converging (~0.4 m tracking error) and stable in flight;
-  falls back to raw truth and says so if the filter ever goes non-finite.
+- **Wired three real skycore algorithms into the live loop** — `serve.py` imports the genuine
+  `navigation/aukf.py` (22-state AUKF, noisy GPS in a local-ENU-metre frame — the filter does
+  `pos += vel·dt`, so lat/lon degrees would blow it up), `control/lqr.py` (`LQRController` flies
+  the point-mass closed-loop, with a drone-like velocity envelope), and `cuas/classifier.py`
+  (`CUASClassifier` grades a simulated intruder → `/ws/threats`). Verified: AUKF ~0.4 m error,
+  LQR converges to waypoints at ~16 m/s, classifier escalates the intruder high→critical as it
+  closes. Each has an honest fallback (raw truth / naive mover / no threats) if its module errors.
+- **Built the Threats page + wired `AdsBService`** to consume `/ws/threats`, so the real
+  classifier's verdict (e.g. `commercial_drone / critical`) renders live in the GCS.
 
 ## Known gaps / honest limitations
 
@@ -100,6 +108,6 @@ VITE_OPENROUTER_API_KEY=sk-or-...
   temporarily relaxed to get a green build; there are unused imports to clean up.
 - The map/video/threats pages render but are not yet fed by the backend — only the
   Dashboard/Telemetry pages consume the live WebSocket.
-- The real **AUKF navigation** is now wired in (above). The rest of the genuine library —
-  **control** (PID/MPC/LQR) and **C-UAS detection** at `../src/skycore_v1.0.0/skycore/` —
-  is not yet driven by the live loop; wiring those in is the natural next step (see `AUDIT.md`).
+- Real **AUKF navigation**, **LQR control**, and **CUASClassifier detection** are now wired into
+  the live loop (above). Still stubs in this snapshot: the **Missions / Video / AI Chat / Telemetry**
+  pages (only Dashboard + the new Threats page are real). Wiring those to the backend is the next step.
