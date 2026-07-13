@@ -32,14 +32,21 @@ rules (FAA / EASA / CAAI).
 ```
 consolidated/
 ├── launch.ps1 / launch.sh   # ONE command: build + run the whole system on :8080
+├── Dockerfile / docker-compose.yml   # one container, one port
 ├── AUDIT.md            # honest real-vs-claimed inventory of the whole archive
 ├── README.md           # this file
 ├── gcs-web/            # React 18 + Vite + TypeScript GCS (6 real backend-driven pages)
 │   └── src/                  # App, pages (Dashboard/Threats/Telemetry/Missions/AIChat/Video), services
 └── backend/
-    ├── serve.py        # unified server: serves the GCS + telemetry/threat WS + real AUKF/LQR/C-UAS
-    └── requirements.txt
+    ├── serve.py        # unified server: GCS + telemetry/threat WS + real AUKF/LQR/C-UAS
+    ├── test_backend.py # test suite (proves the 3 real modules run in the loop)
+    ├── requirements.txt
+    └── skycore/        # the real modules, VENDORED (self-contained): navigation/aukf,
+                        #   control/lqr, cuas/classifier — from amjad2161/Dji-owner v1.0.0
 ```
+
+Self-contained: the three genuine algorithms live under `backend/skycore/`, so the system needs
+nothing outside `consolidated/` (works as a repo export and in Docker).
 
 ## Run it (one command — the whole system on one port)
 
@@ -69,7 +76,32 @@ python -m venv venv; venv\Scripts\pip install -r requirements.txt; venv\Scripts\
 cd consolidated/gcs-web; npm install; npm run dev
 ```
 
-### Optional — AI Chat page
+## Tests
+
+The backend has a test suite that proves the three real modules actually run in the loop
+(AUKF loads and tracks, LQR flies to a waypoint, the classifier emits a valid threat, the
+telemetry shape matches the GCS contract):
+
+```powershell
+cd consolidated/backend
+venv\Scripts\python test_backend.py     # standalone; or: venv\Scripts\python -m pytest
+```
+
+Expected: `7/7 passed`.
+
+## Docker (one container)
+
+```powershell
+cd consolidated
+docker compose up --build      # -> http://localhost:8080
+```
+
+A multi-stage build compiles the GCS (node) and runs the unified Python server (which serves
+the UI + WebSockets + the vendored real modules). Everything is in `consolidated/`, so the
+container is self-contained. _(Not built in this environment — Docker wasn't installed here — but
+the layout is verified working outside Docker.)_
+
+## Optional — AI Chat page
 
 The AI Chat page calls OpenRouter. It stays inert without a key. To enable it, create
 `gcs-web/.env` with:

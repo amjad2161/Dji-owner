@@ -42,6 +42,7 @@ except Exception:
 _here = os.path.dirname(os.path.abspath(__file__))
 _PKG_CANDIDATES = [
     os.environ.get("SKYCORE_PKG", ""),
+    os.path.join(_here, "skycore"),                                   # vendored (self-contained / Docker)
     os.path.join(_here, "..", "..", "src", "skycore_v1.0.0", "skycore"),
     os.path.join(_here, "..", "src", "skycore_v1.0.0", "skycore"),
     r"C:\Users\Mobar\OneDrive\Desktop\SkyCore_Consolidated\src\skycore_v1.0.0\skycore",

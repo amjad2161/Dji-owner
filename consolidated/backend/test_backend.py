@@ -1,0 +1,103 @@
+"""
+Tests for the SkyCore live backend — proves the three real skycore modules
+(AUKF nav, LQR control, CUASClassifier detection) actually run in the loop.
+
+Run:  python test_backend.py      (no deps beyond the backend's own)
+  or: pytest test_backend.py
+"""
+import math
+import serve
+
+HOME_LAT, HOME_LON = serve.HOME_LAT, serve.HOME_LON
+M_PER_DEG_LAT = serve.M_PER_DEG_LAT
+
+
+def _steps(s: "serve.SimState", n: int) -> None:
+    for _ in range(n):
+        s.step()
+
+
+def test_real_backends_loaded():
+    s = serve.SimState()
+    assert s.nav_backend.startswith("skycore.navigation.aukf"), s.nav_backend
+    assert s.control_backend.startswith("skycore.control.lqr"), s.control_backend
+    assert s.detect_backend.startswith("skycore.cuas.classifier"), s.detect_backend
+
+
+def test_takeoff_climbs_via_lqr():
+    s = serve.SimState()
+    s.command("takeoff", {"altitude": 40})
+    _steps(s, 120)                      # ~12 s sim (plant advances at fixed 0.1 s/step)
+    assert s.mode == "FLYING", s.mode
+    assert 35 <= s.u <= 45, s.u         # LQR converged to ~40 m
+
+
+def test_goto_moves_toward_target():
+    s = serve.SimState()
+    s.command("takeoff", {"altitude": 40})
+    _steps(s, 60)
+    assert s.u > 0.5
+    target_lat = HOME_LAT + 100.0 / M_PER_DEG_LAT   # 100 m north
+    s.command("goto", {"lat": target_lat, "lon": HOME_LON, "altitude": 40})
+    _steps(s, 200)
+    assert s.n > 40.0, f"expected northward motion, n={s.n}"   # closed toward 100 m north
+
+
+def test_land_disarms():
+    s = serve.SimState()
+    s.command("takeoff", {"altitude": 30})
+    _steps(s, 60)
+    s.command("land", {})
+    _steps(s, 300)
+    assert s.mode == "DISARMED", s.mode
+    assert s.u <= 0.2, s.u
+
+
+def test_detection_emits_valid_threat():
+    s = serve.SimState()
+    _steps(s, 20)
+    assert s.threats, "classifier produced no threat"
+    t = s.threats[0]
+    assert t["severity"] in ("low", "medium", "high", "critical"), t["severity"]
+    assert isinstance(t["type"], str) and t["type"]
+    assert t["distance"] >= 0 and 0 <= t["bearing"] < 360
+
+
+def test_snapshot_shape_matches_gcs_contract():
+    s = serve.SimState()
+    _steps(s, 5)
+    snap = s.snapshot()
+    assert snap["source"] == "simulator"
+    assert "percent" in snap["battery"]
+    for k in ("lat", "lon", "altitude"):
+        assert k in snap["position"]
+    assert "speed" in snap["velocity"]
+    assert "yaw" in snap["attitude"]
+    assert isinstance(snap["mode"], str)
+
+
+def test_aukf_estimate_tracks_truth():
+    s = serve.SimState()
+    s.command("takeoff", {"altitude": 40})
+    _steps(s, 120)
+    assert s.filter is not None and "aukf" in s.nav_backend
+    snap = s.snapshot()
+    # hovering over home -> filtered lat/lon should stay within a few metres of home
+    err_m = abs(snap["position"]["lat"] - HOME_LAT) * M_PER_DEG_LAT
+    assert err_m < 20.0, f"AUKF lateral error {err_m:.1f} m"
+
+
+if __name__ == "__main__":
+    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
+    passed = 0
+    for t in tests:
+        try:
+            t()
+            print(f"PASS  {t.__name__}")
+            passed += 1
+        except AssertionError as e:
+            print(f"FAIL  {t.__name__}: {e}")
+        except Exception as e:
+            print(f"ERROR {t.__name__}: {type(e).__name__}: {e}")
+    print(f"\n{passed}/{len(tests)} passed")
+    raise SystemExit(0 if passed == len(tests) else 1)
