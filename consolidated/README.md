@@ -31,45 +31,43 @@ rules (FAA / EASA / CAAI).
 
 ```
 consolidated/
+├── launch.ps1 / launch.sh   # ONE command: build + run the whole system on :8080
 ├── AUDIT.md            # honest real-vs-claimed inventory of the whole archive
 ├── README.md           # this file
-├── gcs-web/            # React 18 + Vite + TypeScript Ground Control Station
-│   ├── index.html            # (added — was missing; app couldn't build without it)
-│   ├── vite.config.ts        # (added)
-│   ├── tsconfig.node.json    # (added)
-│   └── src/                  # App, 7 pages, 3 services
+├── gcs-web/            # React 18 + Vite + TypeScript GCS (6 real backend-driven pages)
+│   └── src/                  # App, pages (Dashboard/Threats/Telemetry/Missions/AIChat/Video), services
 └── backend/
-    ├── serve.py        # live simulator: telemetry + command WebSocket on :8080
+    ├── serve.py        # unified server: serves the GCS + telemetry/threat WS + real AUKF/LQR/C-UAS
     └── requirements.txt
 ```
 
-## Run it (two terminals)
+## Run it (one command — the whole system on one port)
 
-### 1. Backend — live simulator on port 8080
+The backend also serves the built GCS, so the entire system runs as **one process on
+`http://localhost:8080`** — the UI, the telemetry/threat WebSockets, and the real
+AUKF / LQR / C-UAS modules, together.
 
 ```powershell
+cd consolidated
+./launch.ps1            # Windows;   macOS / Linux / Git Bash:  ./launch.sh
+```
+
+That builds the GCS (first run only), sets up the Python venv, and starts the unified
+server. Open **<http://localhost:8080>**, log in with a demo account (e.g. `admin` /
+`admin123`), and use the Dashboard / Missions **Arm → Takeoff → click-map goto → Land / RTH**
+controls: the status flips to **🟢 מחובר (connected)** and altitude / battery / threats
+update live from the real modules.
+
+### Run the parts separately (dev)
+
+```powershell
+# Backend only — APIs + WS on :8080 (visit / for a hint if the UI isn't built)
 cd consolidated/backend
-python -m venv venv
-venv\Scripts\pip install -r requirements.txt
-venv\Scripts\python serve.py
+python -m venv venv; venv\Scripts\pip install -r requirements.txt; venv\Scripts\python serve.py
+
+# GCS dev server (hot reload) on :4173, talking to the backend on :8080
+cd consolidated/gcs-web; npm install; npm run dev
 ```
-
-Check it: open <http://localhost:8080/telemetry> — you'll see live JSON that changes
-over time once the GCS sends a `takeoff` command.
-
-### 2. GCS web app — port 4173
-
-```powershell
-cd consolidated/gcs-web
-npm install
-npm run build
-npm run preview        # http://localhost:4173   (or: npm run dev)
-```
-
-Log in with a demo account shown on the login screen (e.g. `admin` / `admin123`),
-then use the Dashboard **Arm → Takeoff → Land / RTH** buttons. You'll see the status
-flip to **🟢 מחובר (connected)**, altitude climb, and battery drain — all streamed
-live from the backend.
 
 ### Optional — AI Chat page
 

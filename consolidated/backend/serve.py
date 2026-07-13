@@ -340,8 +340,8 @@ async def _start() -> None:
     asyncio.create_task(loop())
 
 
-@app.get("/")
-async def root() -> dict:
+@app.get("/api/status")
+async def api_status() -> dict:
     return {
         "service": "SkyCore Live Backend", "status": "running",
         "nav_backend": state.nav_backend, "control_backend": state.control_backend,
@@ -394,6 +394,36 @@ async def ws_threats(ws: WebSocket) -> None:
             await asyncio.sleep(0.5)
     except Exception:
         pass
+
+
+# --- Unified single-port serving: this server ALSO serves the built GCS UI, so the
+#     whole system runs as ONE process on ONE port (http://localhost:8080). ---
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from fastapi.responses import FileResponse, HTMLResponse  # noqa: E402
+
+_DIST = next(
+    (d for d in (
+        os.environ.get("SKYCORE_GCS_DIST", ""),
+        os.path.join(_here, "..", "gcs-web", "dist"),   # consolidated/backend + consolidated/gcs-web
+        os.path.join(_here, "gcs-web", "dist"),          # serve.py beside gcs-web/
+    ) if d and os.path.isdir(d)),
+    None,
+)
+if _DIST:
+    app.mount("/assets", StaticFiles(directory=os.path.join(_DIST, "assets")), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def _spa(full_path: str) -> FileResponse:
+        candidate = os.path.join(_DIST, full_path)
+        if full_path and os.path.isfile(candidate):
+            return FileResponse(candidate)
+        return FileResponse(os.path.join(_DIST, "index.html"))
+else:
+    @app.get("/", response_class=HTMLResponse)
+    async def _no_ui() -> str:
+        return ("<h2>SkyCore backend running.</h2><p>GCS UI not built yet. Run the launch "
+                "script, or build gcs-web with <code>npm run build</code>. "
+                "APIs: /api/status, /telemetry, /threats; ws /ws/telemetry, /ws/threats.</p>")
 
 
 if __name__ == "__main__":
