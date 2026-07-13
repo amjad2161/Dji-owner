@@ -21,6 +21,7 @@ export class TelemetryService {
     heading: 0,
     mode: 'DISARMED'
   };
+  private navInfo = { navBackend: '', controlBackend: '', detectBackend: '', nis: 0, source: '' };
 
   private constructor() {}
 
@@ -59,6 +60,13 @@ export class TelemetryService {
             position: data.position ?? this.currentState.position,
             heading: data.attitude?.yaw ?? this.currentState.heading,
             mode: data.mode ?? this.currentState.mode
+          };
+          this.navInfo = {
+            navBackend: data.nav_backend ?? this.navInfo.navBackend,
+            controlBackend: data.control_backend ?? this.navInfo.controlBackend,
+            detectBackend: data.detect_backend ?? this.navInfo.detectBackend,
+            nis: data.nav_nis ?? this.navInfo.nis,
+            source: data.source ?? this.navInfo.source,
           };
           this.notifySubscribers();
         } catch (e) {
@@ -131,6 +139,10 @@ export class TelemetryService {
 
   public getCurrentState(): DroneState {
     return { ...this.currentState };
+  }
+
+  public getNavInfo() {
+    return { ...this.navInfo };
   }
 
   // Commands

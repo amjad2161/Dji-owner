@@ -108,6 +108,10 @@ VITE_OPENROUTER_API_KEY=sk-or-...
   temporarily relaxed to get a green build; there are unused imports to clean up.
 - The map/video/threats pages render but are not yet fed by the backend — only the
   Dashboard/Telemetry pages consume the live WebSocket.
-- Real **AUKF navigation**, **LQR control**, and **CUASClassifier detection** are now wired into
-  the live loop (above). Still stubs in this snapshot: the **Missions / Video / AI Chat / Telemetry**
-  pages (only Dashboard + the new Threats page are real). Wiring those to the backend is the next step.
+- Real **AUKF navigation**, **LQR control**, and **CUASClassifier detection** are wired into the
+  live loop, and **four GCS pages are real and backend-driven**: Dashboard, Threats (classifier
+  feed), Telemetry (live AUKF charts + backend provenance), and Missions (click-map → `goto` flies
+  the LQR). Remaining stubs: **Video** (the backend has no real camera feed — deliberately not faked)
+  and **AI Chat** (needs a `VITE_OPENROUTER_API_KEY`).
+- Minor papercut: `TelemetryService.sendCommand` silently drops a command if the WebSocket hasn't
+  finished opening — the very first button press right after a page load can no-op; press again.
