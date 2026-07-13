@@ -1,0 +1,10 @@
+README.md
+pyproject.toml
+core/drone.py
+missions/orbit.py
+skycore.egg-info/PKG-INFO
+skycore.egg-info/SOURCES.txt
+skycore.egg-info/dependency_links.txt
+skycore.egg-info/entry_points.txt
+skycore.egg-info/requires.txt
+skycore.egg-info/top_level.txt

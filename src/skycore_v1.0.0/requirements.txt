@@ -1,0 +1,61 @@
+# SkyCore Requirements
+# Install with: pip install -r requirements.txt
+
+# Core dependencies
+numpy>=1.21.0
+scipy>=1.9.0
+
+# Async support
+asyncio-throttle>=1.0.2
+aiofiles>=23.0.0
+
+# Communication
+websockets>=11.0.0
+pymavlink>=2.4.0
+mavsdk>=0.50.0
+
+# Computer Vision
+opencv-python>=4.8.0
+ultralytics>=8.0.0
+Pillow>=10.0.0
+
+# Hardware interfaces
+pyserial>=3.5
+Bleak>=0.20.0  # Bluetooth LE
+
+# AI / LLM
+ollama>=0.1.0  # Local LLM support
+
+# Data handling
+pydantic>=2.0.0
+python-dateutil>=2.8.0
+orjson>=3.9.0
+
+# Web framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+starlette>=0.27.0
+
+# Frontend (for GCS)
+httpx>=0.25.0
+
+# Maps / GIS
+pyproj>=3.6.0
+shapely>=2.0.0
+
+# Weather API
+requests>=2.31.0
+
+# Configuration
+PyYAML>=6.0
+python-dotenv>=1.0.0
+
+# Logging
+loguru>=0.7.0
+
+# CLI
+click>=8.1.0
+rich>=13.0.0
+
+# Optional: Hardware-in-the-Loop
+FlightGoggles>=1.0.0  # Optional: Hardware-in-the-loop simulation

@@ -1,0 +1,293 @@
+{
+    "system": {
+        "name": "SkyCore Autonomous Drone Platform",
+        "version": "1.0.0",
+        "log_level": "INFO",
+        "log_file": "logs/skycore.log",
+        "data_dir": "data"
+    },
+    "drone": {
+        "mass": 2.5,
+        "max_tilt_angle": 35.0,
+        "max_yaw_rate": 90.0,
+        "inertia": {
+            "xx": 0.029,
+            "yy": 0.029,
+            "zz": 0.055
+        },
+        "frame_type": "quad_x",
+        "motor_layout": {
+            "1": {"position": [0.15, 0.15], "direction": 1},
+            "2": {"position": [-0.15, 0.15], "direction": -1},
+            "3": {"position": [-0.15, -0.15], "direction": 1},
+            "4": {"position": [0.15, -0.15], "direction": -1}
+        },
+        "propeller": {
+            "diameter": 0.254,
+            "pitch": 0.127,
+            "thrust_coefficient": 1.0e-5,
+            "drag_coefficient": 1.0e-6
+        }
+    },
+    "battery": {
+        "cells": 4,
+        "nominal_voltage": 14.8,
+        "capacity_mah": 5200,
+        "max_charge_rate": 5.0,
+        "land_threshold_percent": 10,
+        "rth_threshold_percent": 20,
+        "low_battery_warning_percent": 30,
+        "cell_voltage_min": 3.3,
+        "cell_voltage_max": 4.2,
+        "internal_resistance_mohm": 15
+    },
+    "gps": {
+        "min_satellites": 8,
+        "hdop_threshold": 2.5,
+        "position_accuracy_threshold": 2.0,
+        "rtk_enabled": true,
+        "rtk_baseline_max_m": 10000,
+        "ephemeris_timeout_sec": 3600,
+        "measurement_rate_hz": 10,
+        "satellite_elevation_mask_deg": 10
+    },
+    "navigation": {
+        "home_position": {
+            "latitude": 32.0853,
+            "longitude": 34.7818,
+            "altitude": 0.0
+        },
+        "geofence": {
+            "enabled": true,
+            "max_altitude_m": 120.0,
+            "max_distance_m": 500.0,
+            "vertical_margin_m": 10.0
+        },
+        "ekf": {
+            "enabled": true,
+            "process_noise_pos": 0.1,
+            "process_noise_vel": 0.2,
+            "process_noise_att": 0.01,
+            "meas_noise_gps_pos": 1.0,
+            "meas_noise_gps_vel": 0.5,
+            "meas_noise_baro": 2.0
+        },
+        "ukf": {
+            "enabled": false,
+            "alpha": 0.001,
+            "beta": 2.0,
+            "kappa": 0.0
+        },
+        "ukf": {
+            "enabled": false,
+            "alpha": 0.001,
+            "beta": 2.0,
+            "kappa": 0.0
+        },
+        "aukf": {
+            "enabled": true,
+            "lambda": 3.0,
+            "n_sigma": 45,
+            "filter_interval_ms": 10
+        }
+    },
+    "control": {
+        "pid": {
+            "altitude": {
+                "kp": 1.5,
+                "ki": 0.1,
+                "kd": 0.5,
+                "max_out": 1.0
+            },
+            "position_xy": {
+                "kp": 1.2,
+                "ki": 0.05,
+                "kd": 0.3,
+                "max_out": 15.0
+            },
+            "attitude": {
+                "kp": 3.0,
+                "ki": 0.2,
+                "kd": 0.5,
+                "max_out": 400.0
+            },
+            "rate": {
+                "kp": 2.5,
+                "ki": 0.1,
+                "kd": 0.3,
+                "max_out": 800.0
+            }
+        },
+        "geometric": {
+            "enabled": true,
+            "attitude_deadzone_deg": 0.5
+        },
+        "lqr": {
+            "enabled": false,
+            "q_position": 1.0,
+            "q_velocity": 0.5,
+            "q_attitude": 2.0,
+            "r_control": 0.1
+        },
+        "mpc": {
+            "enabled": false,
+            "horizon_steps": 20,
+            "dt": 0.1,
+            "max_iterations": 100,
+            "tolerance": 1e-4
+        }
+    },
+    "sensors": {
+        "imu": {
+            "accel_range": 16.0,
+            "gyro_range": 2000.0,
+            "sample_rate_hz": 1000,
+            "accel_noise_density": 100.0,
+            "gyro_noise_density": 0.01,
+            "temperature_drift_coef": 0.001
+        },
+        "barometer": {
+            "enabled": true,
+            "ground_pressure_pa": 101325.0,
+            "temperature_compensation": true,
+            "filter_alpha": 0.3
+        },
+        "compass": {
+            "enabled": true,
+            "magnetic_declination_deg": 4.5,
+            "calibration_required": true,
+            "tilt_compensation": true,
+            "disturbance_threshold": 50.0
+        },
+        "lidar": {
+            "enabled": true,
+            "max_range_m": 30.0,
+            "min_range_m": 0.1,
+            "field_of_view_deg": 15.0,
+            "obstacle_detection_threshold_m": 5.0
+        }
+    },
+    "communication": {
+        "mavlink": {
+            "system_id": 1,
+            "component_id": 1,
+            "baudrate": 115200,
+            "heartbeat_rate_hz": 1.0,
+            "streamrates": {
+                "attitude": 10,
+                "position": 10,
+                "gps_raw": 5,
+                "battery": 1,
+                "rc_channels": 10
+            }
+        },
+        "expresslrs": {
+            "enabled": true,
+            "baudrate": 400000,
+            "packet_rate_hz": 250,
+            "diversity_antenna": true
+        },
+        "mqtt": {
+            "enabled": true,
+            "broker_host": "localhost",
+            "broker_port": 1883,
+            "telemetry_topic": "drone/telemetry",
+            "command_topic": "drone/commands",
+            "qos": 1
+        }
+    },
+    "perception": {
+        "obstacle_detection": {
+            "enabled": true,
+            "model_path": "models/yolo_obstacle.pt",
+            "confidence_threshold": 0.6,
+            "nms_threshold": 0.4,
+            "detection_classes": ["person", "car", "tree", "building", "wire"],
+            "avoidance_margin_m": 3.0
+        },
+        "depth": {
+            "enabled": true,
+            "stereo_baseline_m": 0.12,
+            "max_depth_m": 50.0,
+            "depth_accuracy_m": 0.1
+        }
+    },
+    "swarm": {
+        "enabled": false,
+        "max_drones": 10,
+        "comm_range_m": 500,
+        "formation_type": "grid",
+        "collision_avoidance_radius_m": 5.0,
+        "communication_interval_ms": 100
+    },
+    "cuas": {
+        "enabled": true,
+        "detection_radius_m": 300.0,
+        "alert_radius_m": 200.0,
+        "threat_confidence_threshold": 0.7,
+        "auto_avoid": true,
+        "auto_avoid_altitude_m": 30.0
+    },
+    "voice": {
+        "enabled": true,
+        "confidence_threshold": 0.7,
+        "wake_word": "skycore",
+        "safety_commands": ["land", "hover", "rtl", "emergency land", "stop"]
+    },
+    "twin": {
+        "enabled": false,
+        "physics_step_ms": 10,
+        "sensor_latency_ms": 5,
+        "fidelity": "medium"
+    },
+    "api": {
+        "opensky": {
+            "enabled": true,
+            "api_url": "https://opensky-network.org/api",
+            "update_interval_sec": 10,
+            "bounding_box": {
+                "lamin": 32.0,
+                "lamax": 32.2,
+                "lomin": 34.7,
+                "lomax": 34.9
+            }
+        },
+        "weather": {
+            "enabled": true,
+            "api_url": "https://api.open-meteo.com/v1",
+            "update_interval_sec": 300,
+            "wind_layers": [10, 50, 100, 150]
+        },
+        "openrouter": {
+            "enabled": true,
+            "api_key_env": "OPENROUTER_API_KEY",
+            "model": "anthropic/claude-3-sonnet",
+            "temperature": 0.7,
+            "mission_planning": true
+        }
+    },
+    "gcs": {
+        "host": "0.0.0.0",
+        "port": 8000,
+        "web_root": "gcs",
+        "telemetry_buffer_size": 1000,
+        "max_upload_size_mb": 100
+    },
+    "safety": {
+        "emergency_land_battery_percent": 5,
+        "failsafe_action": "rtl",
+        "geofence_violation_action": "hold",
+        "rc_loss_timeout_sec": 3.0,
+        "gcs_loss_timeout_sec": 10.0,
+        "max_flight_time_min": 25,
+        "max_altitude_abort_m": 150
+    },
+    "mission": {
+        "default_waypoint_radius_m": 2.0,
+        "default_loiter_time_sec": 10,
+        "acceptance_radius_m": 3.0,
+        "takeoff_altitude_m": 10.0,
+        "cruise_speed_ms": 5.0,
+        "landing_descent_rate_ms": 0.5
+    }
+}

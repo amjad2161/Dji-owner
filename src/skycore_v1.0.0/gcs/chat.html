@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkyCore GCS - Command Interface</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-primary: #0a1628;
+            --bg-secondary: #0f1f38;
+            --bg-tertiary: #162a47;
+            --accent: #00d4ff;
+            --success: #00ff88;
+            --warning: #ffaa00;
+            --danger: #ff4444;
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --border: rgba(255, 255, 255, 0.1);
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            height: 70px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+        }
+        .logo { font-size: 24px; font-weight: 700; color: var(--accent); letter-spacing: 2px; }
+        .nav-menu { display: flex; gap: 5px; }
+        .nav-item { padding: 10px 20px; color: var(--text-secondary); text-decoration: none; border-radius: 8px; font-size: 14px; }
+        .nav-item:hover, .nav-item.active { background: rgba(0, 212, 255, 0.1); color: var(--accent); }
+        .main-container { flex: 1; display: grid; grid-template-columns: 350px 1fr; overflow: hidden; }
+        .sidebar { background: var(--bg-secondary); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+        .sidebar-header { padding: 20px; border-bottom: 1px solid var(--border); }
+        .section-title { font-size: 14px; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
+        .section-title::before { content: ''; width: 4px; height: 16px; background: var(--accent); border-radius: 2px; }
+        .command-categories { padding: 15px; flex: 1; overflow-y: auto; }
+        .category { margin-bottom: 15px; }
+        .category-title { font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px; }
+        .command-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+        .cmd-btn { padding: 12px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-size: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px; transition: all 0.2s; }
+        .cmd-btn:hover { background: rgba(0, 212, 255, 0.1); border-color: var(--accent); }
+        .cmd-btn span { font-size: 20px; }
+        .cmd-btn.danger { border-color: rgba(255, 68, 68, 0.3); }
+        .cmd-btn.danger:hover { background: rgba(255, 68, 68, 0.1); border-color: var(--danger); }
+        .chat-area { display: flex; flex-direction: column; }
+        .chat-header { padding: 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .chat-title { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+        .voice-indicator { display: flex; align-items: center; gap: 8px; color: var(--success); font-size: 13px; }
+        .voice-indicator::before { content: ''; width: 10px; height: 10px; background: var(--success); border-radius: 50%; }
+        .messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
+        .message { max-width: 80%; padding: 15px 20px; border-radius: 15px; font-size: 14px; line-height: 1.5; }
+        .message.user { background: var(--accent); color: var(--bg-primary); align-self: flex-end; border-bottom-right-radius: 5px; }
+        .message.ai { background: var(--bg-secondary); align-self: flex-start; border-bottom-left-radius: 5px; }
+        .message.system { background: rgba(0, 212, 255, 0.1); border: 1px solid var(--accent); align-self: center; text-align: center; font-size: 12px; color: var(--text-secondary); }
+        .message-time { font-size: 10px; color: var(--text-muted); margin-top: 5px; }
+        .input-area { padding: 20px; border-top: 1px solid var(--border); background: var(--bg-secondary); }
+        .input-row { display: flex; gap: 10px; margin-bottom: 10px; }
+        .command-input { flex: 1; padding: 15px 20px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 10px; color: var(--text-primary); font-size: 14px; }
+        .command-input:focus { outline: none; border-color: var(--accent); }
+        .send-btn { padding: 15px 30px; background: linear-gradient(135deg, var(--accent), #0099cc); border: none; border-radius: 10px; color: var(--bg-primary); font-size: 14px; font-weight: 600; cursor: pointer; }
+        .quick-commands { display: flex; gap: 8px; flex-wrap: wrap; }
+        .quick-cmd { padding: 8px 15px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 20px; color: var(--text-secondary); font-size: 12px; cursor: pointer; transition: all 0.2s; }
+        .quick-cmd:hover { background: rgba(0, 212, 255, 0.1); border-color: var(--accent); color: var(--accent); }
+        .suggestion { background: var(--bg-tertiary); border-radius: 8px; padding: 10px 15px; margin: 5px 0; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+        .suggestion:hover { background: rgba(0, 212, 255, 0.1); }
+        .suggestion-text { font-size: 13px; }
+        .suggestion-use { color: var(--accent); font-size: 11px; }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">SKYCORE</div>
+        <nav class="nav-menu">
+            <a href="dashboard.html" class="nav-item">Dashboard</a>
+            <a href="missions.html" class="nav-item">Missions</a>
+            <a href="threats.html" class="nav-item">Threats</a>
+            <a href="video.html" class="nav-item">Video</a>
+            <a href="telemetry.html" class="nav-item">Telemetry</a>
+            <a href="chat.html" class="nav-item active">Commands</a>
+        </nav>
+    </header>
+    
+    <div class="main-container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div class="section-title">Quick Commands</div>
+            </div>
+            
+            <div class="command-categories">
+                <div class="category">
+                    <div class="category-title">Navigation</div>
+                    <div class="command-grid">
+                        <button class="cmd-btn" onclick="sendCommand('goto home')">
+                            <span>🏠</span>
+                            Return Home
+                        </button>
+                        <button class="cmd-btn" onclick="sendCommand('takeoff')">
+                            <span>🚀</span>
+                            Takeoff
+                        </button>
+                        <button class="cmd-btn" onclick="sendCommand('land')">
+                            <span>🛬</span>
+                            Land
+                        </button>
+                        <button class="cmd-btn" onclick="sendCommand('hover')">
+                            <span>✋</span>
+                            Hover
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="category">
+                    <div class="category-title">Flight Modes</div>
+                    <div class="command-grid">
+                        <button class="cmd-btn" onclick="sendCommand('mode auto')">
+                            <span>🤖</span>
+                            Auto Mode
+                        </button>
+                        <button class="cmd-btn" onclick="sendCommand('mode guided')">
+                            <span>🎯</span>
+                            Guided Mode
+                        </button>
+                        <button class="cmd-btn" onclick="sendCommand('mode stabilize')">
+                            <span>⚖️</span>
+                            Stabilize
+                        </button>
+                        <button class="cmd-btn" onclick="sendCommand('mode loiter')">
+                            <span>🔄</span>
+                            Loiter
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="category">
+                    <div class="category-title">Safety</div>
+                    <div class="command-grid">
+                        <button class="cmd-btn danger" onclick="sendCommand('emergency land')">
+                            <span>🛑</span>
+                            Emergency Land
+                        </button>
+                        <button class="cmd-btn danger" onclick="sendCommand('kill switch')">
+                            <span>⚡</span>
+                            Kill Switch
+                        </button>
+                        <button class="cmd-btn" onclick="sendCommand('parachute deploy')">
+                            <span>🪂</span>
+                            Parachute
+                        </button>
+                        <button class="cmd-btn" onclick="sendCommand('buzzer on')">
+                            <span>🔔</span>
+                            Locate Drone
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="category">
+                    <div class="category-title">Camera</div>
+                    <div class="command-grid">
+                        <button class="cmd-btn" onclick="sendCommand('photo')">
+                            <span>📷</span>
+                            Take Photo
+                        </button>
+                        <button class="cmd-btn" onclick="sendCommand('video start')">
+                            <span>🎥</span>
+                            Start Video
+                        </button>
+                        <button class="cmd-btn" onclick="sendCommand('zoom 10x')">
+                            <span>🔍</span>
+                            Zoom 10x
+                        </button>
+                        <button class="cmd-btn" onclick="sendCommand('spotlight on')">
+                            <span>💡</span>
+                            Spotlight
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chat-area">
+            <div class="chat-header">
+                <div class="chat-title">
+                    <span>🎙️</span>
+                    Voice Command Interface
+                    <div class="voice-indicator">Listening</div>
+                </div>
+            </div>
+            
+            <div class="messages" id="messages">
+                <div class="message system">
+                    Welcome to SkyCore Command Interface. You can type commands or use quick command buttons.
+                </div>
+                
+                <div class="message ai">
+                    <div>Hello! I'm your drone control assistant. How can I help you today?</div>
+                    <div class="message-time">System • Just now</div>
+                </div>
+                
+                <div class="message user">
+                    <div>Take off to 50 meters</div>
+                    <div class="message-time">You • Just now</div>
+                </div>
+                
+                <div class="message ai">
+                    <div>Command accepted: Takeoff to 50m. Executing...</div>
+                    <div class="message-time">SkyCore AI • Just now</div>
+                </div>
+                
+                <div class="message system">
+                    ✓ Takeoff initiated - Current altitude: 52.3m
+                </div>
+            </div>
+            
+            <div class="input-area">
+                <div class="input-row">
+                    <input type="text" class="command-input" id="commandInput" placeholder="Type a command or question..." onkeypress="handleKeyPress(event)">
+                    <button class="send-btn" onclick="sendInput()">Send</button>
+                </div>
+                <div class="quick-commands">
+                    <button class="quick-cmd" onclick="sendCommand('status')">Status</button>
+                    <button class="quick-cmd" onclick="sendCommand('battery')">Battery</button>
+                    <button class="quick-cmd" onclick="sendCommand('gps')">GPS Info</button>
+                    <button class="quick-cmd" onclick="sendCommand('next waypoint')">Next Waypoint</button>
+                    <button class="quick-cmd" onclick="sendCommand('abort mission')">Abort Mission</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const user = sessionStorage.getItem('user');
+        if (!user) window.location.href = 'login.html';
+        
+        function sendCommand(cmd) {
+            addMessage(cmd, 'user');
+            processCommand(cmd);
+        }
+        
+        function sendInput() {
+            const input = document.getElementById('commandInput');
+            const cmd = input.value.trim();
+            if (cmd) {
+                sendCommand(cmd);
+                input.value = '';
+            }
+        }
+        
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') sendInput();
+        }
+        
+        function addMessage(text, type) {
+            const messages = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = 'message ' + type;
+            div.innerHTML = `<div>${text}</div><div class="message-time">${type === 'user' ? 'You' : 'SkyCore AI'} • Just now</div>`;
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        function processCommand(cmd) {
+            // Simulated command processing
+            setTimeout(() => {
+                const responses = {
+                    'goto home': 'Returning to home position...',
+                    'takeoff': 'Initiating takeoff...',
+                    'land': 'Landing sequence initiated...',
+                    'hover': 'Holding position...',
+                    'mode auto': 'Switching to AUTO mode...',
+                    'emergency land': 'EMERGENCY LANDING SEQUENCE INITIATED',
+                    'status': 'Drone Status: Flying | Altitude: 52.3m | Battery: 75% | GPS: 16 satellites',
+                    'battery': 'Battery: 75% | Voltage: 12.4V | Current: 2.5A | Time remaining: ~18 minutes',
+                    'gps': 'GPS Info: 16 satellites | HDOP: 1.2 | Position: 32.0853°N, 34.7818°E',
+                    'photo': 'Capturing photo...',
+                    'video start': 'Video recording started',
+                    'abort mission': 'Mission aborted. Holding position...'
+                };
+                
+                const response = responses[cmd.toLowerCase()] || 'Command received. Processing...';
+                addMessage(response, 'ai');
+                
+                if (cmd.toLowerCase().includes('abort')) {
+                    addMessage('⚠️ Mission aborted - awaiting further commands', 'system');
+                }
+            }, 500);
+        }
+    </script>
+</body>
+</html>

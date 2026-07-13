@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SkyCore — 3D Path</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, system-ui, sans-serif; background: #0e0f12; color: #e9ecef; overflow: hidden; }
+  header { padding: 14px 24px; background: #1a1d22; border-bottom: 1px solid #2a2e35; display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 1; }
+  header h1 { margin: 0; font-size: 18px; font-weight: 500; letter-spacing: 0.5px; }
+  header a { color: #6cd47b; text-decoration: none; font-size: 13px; }
+  #scene { position: absolute; top: 56px; left: 0; right: 0; bottom: 0; }
+  #stats { position: absolute; top: 80px; right: 24px; background: rgba(26,29,34,0.85); border: 1px solid #2a2e35; padding: 12px; border-radius: 8px; font-size: 12px; min-width: 180px; }
+  #stats .row { padding: 4px 0; display: flex; justify-content: space-between; }
+  #stats .label { color: #8a93a0; }
+  #legend { position: absolute; bottom: 16px; left: 24px; background: rgba(26,29,34,0.85); border: 1px solid #2a2e35; padding: 10px 14px; border-radius: 8px; font-size: 12px; }
+  #legend .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>SKYCORE · 3D PATH</h1>
+  <a href="/">← Back to map</a>
+</header>
+<div id="scene"></div>
+<div id="stats">
+  <div class="row"><span class="label">Points</span><span id="s-points">0</span></div>
+  <div class="row"><span class="label">Max alt</span><span id="s-max">—</span></div>
+  <div class="row"><span class="label">Distance</span><span id="s-dist">—</span></div>
+  <div class="row"><span class="label">Mode</span><span id="s-mode">—</span></div>
+</div>
+<div id="legend">
+  <div><span class="swatch" style="background:#6cd47b"></span>Flight path</div>
+  <div><span class="swatch" style="background:#f0c674"></span>Home</div>
+  <div><span class="swatch" style="background:#3b82f6"></span>Drone</div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const container = document.getElementById('scene');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0e0f12);
+scene.fog = new THREE.Fog(0x0e0f12, 200, 800);
+
+const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 5000);
+camera.position.set(120, 80, 120);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(container.clientWidth, container.clientHeight);
+container.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+// Lights
+scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+dir.position.set(50, 100, 50);
+scene.add(dir);
+
+// Ground grid
+const grid = new THREE.GridHelper(600, 60, 0x2a2e35, 0x1a1d22);
+scene.add(grid);
+
+// Axes (subtle)
+const axes = new THREE.AxesHelper(15);
+scene.add(axes);
+
+// Home marker (yellow sphere at origin)
+const homeMat = new THREE.MeshStandardMaterial({ color: 0xf0c674, emissive: 0x3a2e00 });
+const home = new THREE.Mesh(new THREE.SphereGeometry(2.5, 16, 16), homeMat);
+scene.add(home);
+
+// Drone marker (blue sphere)
+const droneMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, emissive: 0x0a2240 });
+const drone = new THREE.Mesh(new THREE.SphereGeometry(2.0, 16, 16), droneMat);
+scene.add(drone);
+
+// Path: dynamic line
+let pathPoints = [];
+const pathGeo = new THREE.BufferGeometry();
+const pathMat = new THREE.LineBasicMaterial({ color: 0x6cd47b, linewidth: 2 });
+const pathLine = new THREE.Line(pathGeo, pathMat);
+scene.add(pathLine);
+
+// LatLon -> local meters projection (simple equirectangular relative to home)
+let homeLat = null, homeLon = null;
+const LAT_M = 111000;
+function project(lat, lon) {
+  if (homeLat === null) {
+    homeLat = lat; homeLon = lon;
+  }
+  const x = (lon - homeLon) * LAT_M * Math.cos(lat * Math.PI / 180);
+  const z = -(lat - homeLat) * LAT_M;  // north -> -Z
+  return { x, z };
+}
+
+let maxAlt = 0;
+let totalDist = 0;
+let lastPoint = null;
+
+const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+const ws = new WebSocket(`${proto}://${location.host}/ws/telemetry`);
+ws.onmessage = (e) => {
+  const t = JSON.parse(e.data);
+  if (!t.position) return;
+  const { x, z } = project(t.position.lat, t.position.lon);
+  const y = t.position.alt;
+  drone.position.set(x, y, z);
+  pathPoints.push(new THREE.Vector3(x, y, z));
+  if (pathPoints.length > 4000) pathPoints.shift();
+  pathGeo.setFromPoints(pathPoints);
+
+  if (lastPoint) {
+    const d = Math.sqrt((x-lastPoint.x)**2 + (y-lastPoint.y)**2 + (z-lastPoint.z)**2);
+    totalDist += d;
+  }
+  lastPoint = { x, y, z };
+  if (y > maxAlt) maxAlt = y;
+
+  document.getElementById('s-points').textContent = pathPoints.length;
+  document.getElementById('s-max').textContent = maxAlt.toFixed(1) + ' m';
+  document.getElementById('s-dist').textContent = totalDist.toFixed(0) + ' m';
+  document.getElementById('s-mode').textContent = t.mode || '—';
+};
+
+function onResize() {
+  camera.aspect = container.clientWidth / container.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(container.clientWidth, container.clientHeight);
+}
+window.addEventListener('resize', onResize);
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>

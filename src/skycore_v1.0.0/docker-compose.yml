@@ -1,0 +1,25 @@
+services:
+  skycore:
+    build: .
+    container_name: skycore
+    ports:
+      - "8080:8080"
+    environment:
+      - SKYCORE_BACKEND=simulator
+    restart: unless-stopped
+
+  # Optional: an MQTT broker for telemetry fan-out across services
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: skycore-mqtt
+    ports:
+      - "1883:1883"
+    profiles: ["with-broker"]
+
+  # Optional: an RTMP server for video streaming locally
+  rtmp:
+    image: tiangolo/nginx-rtmp
+    container_name: skycore-rtmp
+    ports:
+      - "1935:1935"
+    profiles: ["with-streaming"]

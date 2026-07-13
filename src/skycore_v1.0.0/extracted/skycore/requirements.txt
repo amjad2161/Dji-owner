@@ -1,0 +1,21 @@
+click>=8.1
+pydantic>=2.0
+fastapi>=0.110
+uvicorn[standard]>=0.27
+websockets>=12.0
+pandas>=2.0
+numpy>=1.24
+aiohttp>=3.9
+python-multipart>=0.0.9
+pyyaml>=6.0
+rich>=13.0
+typer>=0.9
+# For vision
+opencv-python-headless>=4.8
+ultralytics>=8.0
+# For video
+ffmpeg-python>=0.2
+# For ML
+torch>=2.0
+# For ADSB etc.
+# Add more as needed

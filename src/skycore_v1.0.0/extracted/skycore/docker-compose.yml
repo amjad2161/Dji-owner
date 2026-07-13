@@ -1,0 +1,30 @@
+version: '3.8'
+services:
+  skycore:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - SKYCORE_BACKEND=simulator
+      - DJI_APP_KEY=${DJI_APP_KEY:-demo}
+    volumes:
+      - ./missions:/app/missions
+      - ./logs:/app/logs
+      - ./presets:/app/presets
+    restart: unless-stopped
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mqtt.conf:/mosquitto/config/mosquitto.conf
+
+  dashboard:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./dashboard:/usr/share/nginx/html
+    depends_on:
+      - skycore

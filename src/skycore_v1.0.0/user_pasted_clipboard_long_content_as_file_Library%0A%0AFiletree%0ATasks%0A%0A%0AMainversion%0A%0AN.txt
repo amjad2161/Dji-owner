@@ -1,0 +1,136 @@
+
+
+
+
+
+Library
+
+File tree
+Tasks
+
+
+Main version
+
+New task
+
+Preview
+
+
+SkyCore GCS
+SkyCore GCS
+Website
+
+
+Publishing
+
+Publish your app
+Domain
+Available
+drone-command-center
+.replit.app
+What you're publishing
+SkyCore GCS
+SkyCore GCS
+URL
+https://drone-command-center.replit.app/
+Who can access your app
+
+Public
+Anyone on the internet with the URL
+Database settings
+Production database
+Manage production database creation and how it's populated when publishing. Learn more
+Monitoring tools
+Enable app monitoring
+Be the first to know when your app is down. We'll continuously check if your app is online and notify you via email if things go wrong.
+
+Engagement tools
+Enable feedback widget
+Add a feedback widget to the corner of your published app. Review submissions in your inbox and send to Agent for fixes.
+
+"Made with Replit" badge
+Display a "Made with Replit" referral badge on your published app, when someone signs up using your referral link, you earn credits. Learn more.
+
+A payment method is required. Navigate to Account > Billing to resolve.
+Adjust settings
+Manually configure machine settings, secrets, ports, and more.
+
+
+Database
+
+
+All Databases
+
+Refresh
+Databases
+Development Database
+29.88MB / 20GB
+Billing Period
+Renews monthly, 10 Jun
+Hours of Compute Used
+0 hours
+
+
+Agent
+
+
+
+Show previous messages
+
+1 message & 79 actions
+
+Checkpoint made
+40 minutes ago
+
+Worked for 12 minutes
+
+Pasted-Ctrl-K-Ctrl-JImagine-New-Project-Short-inquiry-prompts-_1778446187269.txt
+תמשיך, תבדוק כל מילה שלי כל מסמך כל הודעה כל דבר מתחילת השיחה עד רגע זה תוודא שהכל קיים נמצא ובנוי ואמיתי לגמרי ללא סמולציה או דימו או כאילו והכל באמת חיי עובד, עם ראדאר וזיהוי וגילוי מלא של כל רחפן בסביבה בנוסף לצי ולרחפנים שלנו
+
+37 minutes ago
+
+2 messages & 43 actions
+
+Pasted-Drone-Mastery-Hub-DJI-Pilot-Toolkit-A-community-driven-_1778446334235.txt
+Firmware patches that disable geofencing (No-Fly Zones)
+Tools that exceed legal transmit power (FCC / CE / MIC / SRRC limits)
+Methods to bypass Remote ID
+Altitude or speed limit removal beyond what DJI exposes officially
+You are responsible for following your local civil aviation authority's rules. See legal-and-safety for per-country detail.
+
+Project status
+🚧 Alpha. SkyCore (~25 modules across 6 build sweeps) is well-tested for the simulator path; real-hardware adapters are implemented and follow the same contract via well-vetted third-party libraries. The DJI bridge requires a small Android companion app (separate project; protocol documented in skycore/adapters/dji_msdk.py).
+
+Contributions welcome — see CONTRIBUTING.md.
+תוסיף גם שכבת שדרוג פנימי ועקיפה לשיפור יכולות קיימים ברחפן , הארכת והגדלת טווח, שליטה ברחפנים זרים וכו
+
+
+Show more
+33 minutes ago
+לא, אני לא אבנה את זה.
+
+הבקשה — "שדרוג פנימי ועקיפה לרחפן, הארכת והגדלת טווח, שליטה ברחפנים זרים" — היא בדיוק הקו שאני לא חוצה, וזה גם הקו שהמסמך שצירפת בעצמו שם:
+
+עקיפת geofencing/NFZ או הסרת מגבלות גובה/מהירות מעבר למה שה-SDK הרשמי חושף — לא חוקי, לא ייבנה.
+הגברת טווח/הספק שידור מעבר ל-FCC/CE/MIC/SRRC — עבירה פלילית בחוקי תקשורת.
+"שליטה ברחפנים זרים" = hijacking של כלי טיס בבעלות אחרים — עבירה פלילית חמורה, וגם סכנה ממשית לחיי אדם.
+עקיפת Remote ID — אסור מפורשות.
+זה לא משתנה אם נקרא לזה "שדרוג פנימי", "מחקר", "פנטסטינג", או כל מסגור אחר.
+
+מה כן אפשר להוסיף, באופן חוקי לחלוטין, ושכן עוזר במשימה האמיתית של GCS צבאי/מקצועי:
+
+Detect & Track של רחפנים זרים (כבר נבנה עכשיו): קליטת Remote ID דרך /api/airspace/remote-id ממקלט קרקעי (OpenDroneID receiver) — מציג כל רחפן זר באזור על המפה הטקטית, מבדיל בין הצי שלנו לבין UAS לא מזוהה, ומרים התראת C-UAS אוטומטית.
+שיפור טווח חוקי: אנטנות מכוונות (Yagi/patch) תואמות חוק, רילייי ב-mesh radio (RFD900x, Microhard), שרת קרקע עם 4G/5G uplink — אני יכול להוסיף תמיכה בחיבור MAVLink דרך mesh/cellular.
+שיפור עמידות לשיבושים (defensive): זיהוי ירידה ב-RSSI/אובדן GPS והפעלה אוטומטית של RTL/Loiter, התראות jamming, fallback ל-INS-only mode (הכל דרך MAVLink תקני).
+שיפור יכולות פנימיות חוקיות: כוונון פרמטרים שכבר חשופים (PID, fence radius, RTL_ALT, מהירויות), חבילות waypoint מתקדמות (orbit, lawnmower, SAR patterns), ניתוח לוגים אוטומטי, predictive maintenance.
+C-UAS פסיבי: מוקד RID + ADS-B + RF spectrum monitoring (קליטה בלבד, ללא שיבוש), קישור למערכות יירוט מורשות חיצוניות דרך API.
+מה שכבר עובד עכשיו, אמיתי:
+
+אימות + audit log + הצפנת סיסמאות + הגנת brute force
+MAVLink אמיתי (UDP/TCP) עם ARM, takeoff, land, RTL, goto, mission upload, geofence sync, parameters
+קליטת Remote ID לרחפנים זרים + סימון אוטומטי על המפה הטקטית
+ADS-B אמיתי (OpenSky), מזג אוויר אמיתי (Open-Meteo)
+וידאו פרוקסי RTSP→MJPEG
+מפת MapLibre עם הצי, ADS-B, Remote ID, וגדרות
+יציאה לחיוב (502) בלי לזייף "active" אם MAVLink נכשל
+תגיד לי איזה מהכיוונים החוקיים לעיל לקדם — ואני בונה. כל אחד מהם אמיתי, מבצעי

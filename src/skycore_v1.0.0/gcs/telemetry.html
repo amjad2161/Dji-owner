@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkyCore GCS - Telemetry</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-primary: #0a1628;
+            --bg-secondary: #0f1f38;
+            --bg-tertiary: #162a47;
+            --accent: #00d4ff;
+            --success: #00ff88;
+            --warning: #ffaa00;
+            --danger: #ff4444;
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --border: rgba(255, 255, 255, 0.1);
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        .header {
+            height: 70px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+        }
+        .logo { font-size: 24px; font-weight: 700; color: var(--accent); letter-spacing: 2px; }
+        .nav-menu { display: flex; gap: 5px; }
+        .nav-item { padding: 10px 20px; color: var(--text-secondary); text-decoration: none; border-radius: 8px; font-size: 14px; }
+        .nav-item:hover, .nav-item.active { background: rgba(0, 212, 255, 0.1); color: var(--accent); }
+        .main-content { padding: 20px; }
+        .page-title { font-size: 24px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 15px; }
+        .telemetry-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+        .telemetry-card { background: var(--bg-secondary); border-radius: 15px; padding: 25px; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .card-title { font-size: 14px; color: var(--text-secondary); display: flex; align-items: center; gap: 10px; }
+        .card-title span { font-size: 20px; }
+        .card-badge { padding: 4px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+        .badge-live { background: rgba(0, 255, 136, 0.2); color: var(--success); }
+        .badge-warn { background: rgba(255, 170, 0, 0.2); color: var(--warning); }
+        .chart-container { height: 150px; background: var(--bg-tertiary); border-radius: 10px; margin-bottom: 15px; display: flex; align-items: flex-end; padding: 10px; gap: 5px; }
+        .chart-bar { flex: 1; background: var(--accent); border-radius: 3px 3px 0 0; transition: height 0.3s; }
+        .chart-bar.highlight { background: var(--success); }
+        .metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        .metric { text-align: center; padding: 10px; background: var(--bg-tertiary); border-radius: 8px; }
+        .metric-label { font-size: 10px; color: var(--text-muted); margin-bottom: 5px; }
+        .metric-value { font-size: 16px; font-weight: 600; color: var(--accent); }
+        .position-card { grid-column: span 2; }
+        .position-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+        .position-item { text-align: center; padding: 15px; background: var(--bg-tertiary); border-radius: 10px; }
+        .position-label { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; }
+        .position-value { font-size: 18px; font-weight: 600; }
+        .position-unit { font-size: 12px; color: var(--text-secondary); }
+        .attitude-visual { display: flex; justify-content: center; align-items: center; gap: 30px; margin-bottom: 20px; }
+        .attitude-ring { width: 120px; height: 120px; border: 3px solid var(--border); border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative; }
+        .attitude-horizon { width: 80px; height: 40px; background: linear-gradient(var(--accent) 50%, var(--bg-tertiary) 50%); border-radius: 50%; }
+        .attitude-arrow { position: absolute; top: -15px; width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 15px solid var(--warning); }
+        .attitude-text { text-align: center; }
+        .attitude-value { font-size: 24px; font-weight: 600; }
+        .attitude-label { font-size: 12px; color: var(--text-muted); }
+        .system-status { grid-column: span 2; }
+        .status-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+        .status-item { text-align: center; padding: 15px; background: var(--bg-tertiary); border-radius: 8px; }
+        .status-icon { font-size: 24px; margin-bottom: 8px; }
+        .status-name { font-size: 11px; color: var(--text-muted); margin-bottom: 5px; }
+        .status-value { font-size: 14px; font-weight: 600; }
+        .status-ok { color: var(--success); }
+        .status-warn { color: var(--warning); }
+        .status-error { color: var(--danger); }
+        .download-section { margin-top: 30px; display: flex; gap: 15px; }
+        .btn { padding: 12px 25px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; }
+        .btn-primary { background: linear-gradient(135deg, var(--accent), #0099cc); color: var(--bg-primary); }
+        .btn-secondary { background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); }
+        .logs-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .logs-table th, .logs-table td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }
+        .logs-table th { color: var(--text-muted); font-weight: 500; }
+        .log-time { color: var(--text-muted); }
+        .log-level { padding: 3px 8px; border-radius: 5px; font-size: 11px; font-weight: 600; }
+        .level-info { background: rgba(0, 212, 255, 0.2); color: var(--accent); }
+        .level-warn { background: rgba(255, 170, 0, 0.2); color: var(--warning); }
+        .level-error { background: rgba(255, 68, 68, 0.2); color: var(--danger); }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">SKYCORE</div>
+        <nav class="nav-menu">
+            <a href="dashboard.html" class="nav-item">Dashboard</a>
+            <a href="missions.html" class="nav-item">Missions</a>
+            <a href="threats.html" class="nav-item">Threats</a>
+            <a href="video.html" class="nav-item">Video</a>
+            <a href="telemetry.html" class="nav-item active">Telemetry</a>
+            <a href="chat.html" class="nav-item">Commands</a>
+        </nav>
+    </header>
+    
+    <div class="main-content">
+        <h1 class="page-title"><span>📊</span> Telemetry Dashboard</h1>
+        
+        <div class="telemetry-grid">
+            <div class="telemetry-card position-card">
+                <div class="card-header">
+                    <div class="card-title"><span>📍</span> Position</div>
+                    <div class="card-badge badge-live">LIVE</div>
+                </div>
+                <div class="position-grid">
+                    <div class="position-item">
+                        <div class="position-label">Latitude</div>
+                        <div class="position-value">32.0853</div>
+                        <div class="position-unit">°N</div>
+                    </div>
+                    <div class="position-item">
+                        <div class="position-label">Longitude</div>
+                        <div class="position-value">34.7818</div>
+                        <div class="position-unit">°E</div>
+                    </div>
+                    <div class="position-item">
+                        <div class="position-label">Altitude (MSL)</div>
+                        <div class="position-value">52.3</div>
+                        <div class="position-unit">m</div>
+                    </div>
+                    <div class="position-item">
+                        <div class="position-label">Altitude (AGL)</div>
+                        <div class="position-value">48.5</div>
+                        <div class="position-unit">m</div>
+                    </div>
+                    <div class="position-item">
+                        <div class="position-label">Ground Speed</div>
+                        <div class="position-value">5.2</div>
+                        <div class="position-unit">m/s</div>
+                    </div>
+                    <div class="position-item">
+                        <div class="position-label">Heading</div>
+                        <div class="position-value">127</div>
+                        <div class="position-unit">°</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="telemetry-card">
+                <div class="card-header">
+                    <div class="card-title"><span>🔋</span> Battery</div>
+                    <div class="card-badge badge-live">75%</div>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-bar" style="height: 75%;"></div>
+                    <div class="chart-bar" style="height: 78%;"></div>
+                    <div class="chart-bar" style="height: 76%;"></div>
+                    <div class="chart-bar" style="height: 75%;"></div>
+                    <div class="chart-bar" style="height: 74%;"></div>
+                    <div class="chart-bar" style="height: 73%;"></div>
+                    <div class="chart-bar" style="height: 72%;"></div>
+                    <div class="chart-bar" style="height: 75%;"></div>
+                    <div class="chart-bar" style="height: 75%;"></div>
+                    <div class="chart-bar highlight" style="height: 75%;"></div>
+                </div>
+                <div class="metrics">
+                    <div class="metric">
+                        <div class="metric-label">Voltage</div>
+                        <div class="metric-value">12.4V</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Current</div>
+                        <div class="metric-value">2.5A</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Temp</div>
+                        <div class="metric-value">28°C</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Est. Time</div>
+                        <div class="metric-value">18min</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="telemetry-card">
+                <div class="card-header">
+                    <div class="card-title"><span>🛰️</span> GPS</div>
+                    <div class="card-badge badge-live">16 SAT</div>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-bar" style="height: 100%;"></div>
+                    <div class="chart-bar" style="height: 95%;"></div>
+                    <div class="chart-bar" style="height: 90%;"></div>
+                    <div class="chart-bar" style="height: 85%;"></div>
+                    <div class="chart-bar" style="height: 88%;"></div>
+                    <div class="chart-bar" style="height: 92%;"></div>
+                    <div class="chart-bar" style="height: 98%;"></div>
+                    <div class="chart-bar" style="height: 100%;"></div>
+                    <div class="chart-bar" style="height: 95%;"></div>
+                    <div class="chart-bar highlight" style="height: 97%;"></div>
+                </div>
+                <div class="metrics">
+                    <div class="metric">
+                        <div class="metric-label">HDOP</div>
+                        <div class="metric-value">1.2</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">VDOP</div>
+                        <div class="metric-value">1.8</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Fix Type</div>
+                        <div class="metric-value">RTK</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Age</div>
+                        <div class="metric-value">0.05s</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="telemetry-card">
+                <div class="card-header">
+                    <div class="card-title"><span>📡</span> Signal</div>
+                    <div class="card-badge badge-live">EXCELLENT</div>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-bar" style="height: 85%;"></div>
+                    <div class="chart-bar" style="height: 82%;"></div>
+                    <div class="chart-bar" style="height: 88%;"></div>
+                    <div class="chart-bar" style="height: 90%;"></div>
+                    <div class="chart-bar" style="height: 87%;"></div>
+                    <div class="chart-bar" style="height: 85%;"></div>
+                    <div class="chart-bar" style="height: 83%;"></div>
+                    <div class="chart-bar" style="height: 86%;"></div>
+                    <div class="chart-bar" style="height: 88%;"></div>
+                    <div class="chart-bar highlight" style="height: 87%;"></div>
+                </div>
+                <div class="metrics">
+                    <div class="metric">
+                        <div class="metric-label">RSSI</div>
+                        <div class="metric-value">-65dBm</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Quality</div>
+                        <div class="metric-value">92%</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Latency</div>
+                        <div class="metric-value">25ms</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">SNR</div>
+                        <div class="metric-value">25dB</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="telemetry-card">
+                <div class="card-header">
+                    <div class="card-title"><span>🎮</span> RC Controller</div>
+                    <div class="card-badge badge-live">CONNECTED</div>
+                </div>
+                <div class="metrics">
+                    <div class="metric">
+                        <div class="metric-label">CH1 Roll</div>
+                        <div class="metric-value">1500</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">CH2 Pitch</div>
+                        <div class="metric-value">1498</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">CH3 Throttle</div>
+                        <div class="metric-value">1250</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">CH4 Yaw</div>
+                        <div class="metric-value">1502</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">CH5 Mode</div>
+                        <div class="metric-value">AUTO</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">CH6</div>
+                        <div class="metric-value">1500</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="telemetry-card">
+                <div class="card-header">
+                    <div class="card-title"><span>🔧</span> Motors</div>
+                    <div class="card-badge badge-live">4/4 OK</div>
+                </div>
+                <div class="metrics">
+                    <div class="metric">
+                        <div class="metric-label">Motor 1</div>
+                        <div class="metric-value">1450</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Motor 2</div>
+                        <div class="metric-value">1448</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Motor 3</div>
+                        <div class="metric-value">1452</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Motor 4</div>
+                        <div class="metric-value">1449</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">RPM Avg</div>
+                        <div class="metric-value">3200</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Total Thrust</div>
+                        <div class="metric-value">5.2N</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="telemetry-card">
+                <div class="card-header">
+                    <div class="card-title"><span>🌡️</span> Environment</div>
+                    <div class="card-badge badge-live">LIVE</div>
+                </div>
+                <div class="metrics">
+                    <div class="metric">
+                        <div class="metric-label">Air Temp</div>
+                        <div class="metric-value">25°C</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Pressure</div>
+                        <div class="metric-value">1013hPa</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Humidity</div>
+                        <div class="metric-value">65%</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Wind</div>
+                        <div class="metric-value">3.5m/s</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Wind Dir</div>
+                        <div class="metric-value">NE</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Density Alt</div>
+                        <div class="metric-value">58m</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="telemetry-card system-status">
+                <div class="card-header">
+                    <div class="card-title"><span>⚙️</span> System Status</div>
+                </div>
+                <div class="status-grid">
+                    <div class="status-item">
+                        <div class="status-icon">🧠</div>
+                        <div class="status-name">Flight Controller</div>
+                        <div class="status-value status-ok">OK</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-icon">📷</div>
+                        <div class="status-name">Camera</div>
+                        <div class="status-value status-ok">OK</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-icon">💾</div>
+                        <div class="status-name">Storage</div>
+                        <div class="status-value status-ok">42GB</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-icon">📡</div>
+                        <div class="status-name">Telemetry</div>
+                        <div class="status-value status-ok">OK</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-icon">🎯</div>
+                        <div class="status-name">RTK GPS</div>
+                        <div class="status-value status-ok">FIXED</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-icon">🛡️</div>
+                        <div class="status-name">Geofence</div>
+                        <div class="status-value status-ok">ACTIVE</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <h2 style="margin-top: 30px; font-size: 18px; color: var(--text-secondary);">Flight Log</h2>
+        <table class="logs-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Level</th>
+                    <th>Event</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="log-time">14:32:15</td>
+                    <td><span class="log-level level-info">INFO</span></td>
+                    <td>Mission Started</td>
+                    <td>Survey mission - North Field</td>
+                </tr>
+                <tr>
+                    <td class="log-time">14:32:18</td>
+                    <td><span class="log-level level-info">INFO</span></td>
+                    <td>Takeoff</td>
+                    <td>Target altitude: 50m</td>
+                </tr>
+                <tr>
+                    <td class="log-time">14:32:45</td>
+                    <td><span class="log-level level-info">INFO</span></td>
+                    <td>Waypoint Reached</td>
+                    <td>WP1 - 32.0853, 34.7835, 50m</td>
+                </tr>
+                <tr>
+                    <td class="log-time">14:33:22</td>
+                    <td><span class="log-level level-warn">WARN</span></td>
+                    <td>Wind Speed High</td>
+                    <td>3.5 m/s detected</td>
+                </tr>
+                <tr>
+                    <td class="log-time">14:33:45</td>
+                    <td><span class="log-level level-info">INFO</span></td>
+                    <td>Photo Captured</td>
+                    <td>Frame 15 of 42</td>
+                </tr>
+                <tr>
+                    <td class="log-time">14:34:10</td>
+                    <td><span class="log-level level-info">INFO</span></td>
+                    <td>RTK Fixed</td>
+                    <td>Position accuracy: ±0.02m</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <div class="download-section">
+            <button class="btn btn-primary">📥 Download Full Log</button>
+            <button class="btn btn-secondary">📊 Export Telemetry CSV</button>
+            <button class="btn btn-secondary">🖨️ Print Report</button>
+        </div>
+    </div>
+    
+    <script>
+        const user = sessionStorage.getItem('user');
+        if (!user) window.location.href = 'login.html';
+    </script>
+</body>
+</html>

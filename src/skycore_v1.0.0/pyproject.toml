@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skycore"
+version = "0.5.0"
+description = "Unified drone operations platform integrating DJI, MAVLink, Tello, and a built-in simulator"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Drone Mastery Hub contributors" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Aviation",
+]
+dependencies = [
+  "click>=8.1",
+  "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+api = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "websockets>=12.0"]
+analytics = ["pandas>=2.0"]
+tello = ["djitellopy>=2.5", "opencv-python>=4.8"]
+mavlink = ["mavsdk>=1.4"]
+dji-bridge = ["websockets>=12.0"]
+vision = ["ultralytics>=8.0", "opencv-python>=4.8", "numpy>=1.24"]
+tracking = ["boxmot>=10.0"]
+geofence = ["shapely>=2.0"]
+airspace = ["shapely>=2.0"]
+planning = ["shapely>=2.0"]
+scheduler = ["astral>=3.0"]
+sun = ["astral>=3.0"]
+notifications = ["aiohttp>=3.9"]
+mqtt = ["paho-mqtt>=2.0"]
+cloud = ["boto3>=1.30"]
+foxglove = ["websockets>=12.0"]
+exif = ["piexif>=1.1"]
+mcap = ["mcap>=1.0"]
+voice = ["openai-whisper>=20231117"]
+voice-fast = ["faster-whisper>=1.0"]
+imaging = ["opencv-python>=4.8", "numpy>=1.24"]
+all = [
+  "fastapi>=0.110", "uvicorn[standard]>=0.27", "websockets>=12.0",
+  "pandas>=2.0",
+  "djitellopy>=2.5", "opencv-python>=4.8",
+  "mavsdk>=1.4",
+  "ultralytics>=8.0", "numpy>=1.24",
+  "boxmot>=10.0",
+  "shapely>=2.0",
+  "astral>=3.0",
+  "aiohttp>=3.9",
+  "paho-mqtt>=2.0",
+  "boto3>=1.30",
+  "piexif>=1.1",
+  "mcap>=1.0",
+]
+dev = ["pytest>=7", "pytest-asyncio>=0.23", "ruff>=0.1"]
+
+[project.scripts]
+skycore = "skycore.cli:cli"
+
+[project.urls]
+Homepage = "https://github.com/amjad2161/dji-owner"
+Repository = "https://github.com/amjad2161/dji-owner"
+
+[tool.setuptools]
+packages = { find = { where = ["."], include = ["skycore*"] } }
+
+[tool.setuptools.package-data]
+"skycore.api" = ["web/*.html"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+minversion = "7.0"
+testpaths = ["tests"]

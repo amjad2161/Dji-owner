@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkyCore GCS - Video</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-primary: #0a1628;
+            --bg-secondary: #0f1f38;
+            --bg-tertiary: #162a47;
+            --accent: #00d4ff;
+            --success: #00ff88;
+            --warning: #ffaa00;
+            --danger: #ff4444;
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --border: rgba(255, 255, 255, 0.1);
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        .header {
+            height: 70px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+        }
+        .logo { font-size: 24px; font-weight: 700; color: var(--accent); letter-spacing: 2px; }
+        .nav-menu { display: flex; gap: 5px; }
+        .nav-item { padding: 10px 20px; color: var(--text-secondary); text-decoration: none; border-radius: 8px; font-size: 14px; }
+        .nav-item:hover, .nav-item.active { background: rgba(0, 212, 255, 0.1); color: var(--accent); }
+        .main-content { padding: 20px; }
+        .page-title { font-size: 24px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 15px; }
+        .video-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .video-card { background: var(--bg-secondary); border-radius: 15px; overflow: hidden; }
+        .video-header { padding: 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
+        .video-title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+        .video-title span { font-size: 18px; }
+        .video-status { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--success); }
+        .video-status::before { content: ''; width: 6px; height: 6px; background: var(--success); border-radius: 50%; animation: blink 1s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .video-container { position: relative; aspect-ratio: 16/9; background: #000; display: flex; align-items: center; justify-content: center; }
+        .video-placeholder { text-align: center; color: var(--text-muted); }
+        .video-placeholder span { font-size: 48px; display: block; margin-bottom: 10px; opacity: 0.3; }
+        .video-placeholder p { font-size: 12px; }
+        .video-overlay { position: absolute; top: 10px; left: 10px; display: flex; gap: 8px; }
+        .video-tag { background: rgba(0, 0, 0, 0.6); padding: 4px 8px; border-radius: 4px; font-size: 10px; }
+        .video-tag.recording { background: rgba(255, 68, 68, 0.3); color: var(--danger); }
+        .video-tag.hd { background: rgba(0, 212, 255, 0.3); color: var(--accent); }
+        .video-info { padding: 15px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .video-stat { text-align: center; }
+        .video-stat-label { font-size: 10px; color: var(--text-muted); margin-bottom: 3px; }
+        .video-stat-value { font-size: 14px; font-weight: 600; color: var(--accent); }
+        .video-controls { padding: 15px; display: flex; gap: 10px; border-top: 1px solid var(--border); }
+        .ctrl-btn { flex: 1; padding: 10px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; transition: all 0.2s; }
+        .ctrl-btn:hover { background: var(--accent); border-color: var(--accent); color: var(--bg-primary); }
+        .controls-bar { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding: 15px; background: var(--bg-secondary); border-radius: 10px; }
+        .control-group { display: flex; gap: 10px; }
+        .btn { padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; }
+        .btn-primary { background: linear-gradient(135deg, var(--accent), #0099cc); color: var(--bg-primary); }
+        .btn-secondary { background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); }
+        .fullscreen-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.95); z-index: 1000; display: none; }
+        .fullscreen-modal.active { display: flex; align-items: center; justify-content: center; }
+        .fullscreen-content { width: 90%; height: 90%; background: var(--bg-secondary); border-radius: 15px; }
+        .fullscreen-header { display: flex; justify-content: space-between; padding: 20px; border-bottom: 1px solid var(--border); }
+        .close-btn { width: 40px; height: 40px; background: var(--bg-tertiary); border: none; border-radius: 50%; color: var(--text-primary); font-size: 20px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">SKYCORE</div>
+        <nav class="nav-menu">
+            <a href="dashboard.html" class="nav-item">Dashboard</a>
+            <a href="missions.html" class="nav-item">Missions</a>
+            <a href="threats.html" class="nav-item">Threats</a>
+            <a href="video.html" class="nav-item active">Video</a>
+            <a href="telemetry.html" class="nav-item">Telemetry</a>
+            <a href="chat.html" class="nav-item">Commands</a>
+        </nav>
+    </header>
+    
+    <div class="main-content">
+        <h1 class="page-title"><span>📹</span> Camera Feeds</h1>
+        
+        <div class="video-grid">
+            <div class="video-card">
+                <div class="video-header">
+                    <div class="video-title"><span>🎥</span> Main Camera</div>
+                    <div class="video-status">LIVE</div>
+                </div>
+                <div class="video-container">
+                    <div class="video-overlay">
+                        <div class="video-tag recording">● REC</div>
+                        <div class="video-tag hd">4K</div>
+                    </div>
+                    <div class="video-placeholder">
+                        <span>📷</span>
+                        <p>Main RGB Camera Feed</p>
+                    </div>
+                </div>
+                <div class="video-info">
+                    <div class="video-stat">
+                        <div class="video-stat-label">FPS</div>
+                        <div class="video-stat-value">30</div>
+                    </div>
+                    <div class="video-stat">
+                        <div class="video-stat-label">RES</div>
+                        <div class="video-stat-value">3840x2160</div>
+                    </div>
+                    <div class="video-stat">
+                        <div class="video-stat-label">BITRATE</div>
+                        <div class="video-stat-value">25 Mbps</div>
+                    </div>
+                </div>
+                <div class="video-controls">
+                    <button class="ctrl-btn" onclick="toggleFullscreen(0)">⛶ Full</button>
+                    <button class="ctrl-btn">📷 Snapshot</button>
+                    <button class="ctrl-btn">⬇ Record</button>
+                </div>
+            </div>
+            
+            <div class="video-card">
+                <div class="video-header">
+                    <div class="video-title"><span>🌡️</span> Thermal</div>
+                    <div class="video-status">LIVE</div>
+                </div>
+                <div class="video-container" style="background: linear-gradient(135deg, #1a1a2e, #2d1f3d);">
+                    <div class="video-overlay">
+                        <div class="video-tag recording">● REC</div>
+                        <div class="video-tag">FLIR</div>
+                    </div>
+                    <div class="video-placeholder">
+                        <span>🌡️</span>
+                        <p>Thermal Camera Feed</p>
+                    </div>
+                </div>
+                <div class="video-info">
+                    <div class="video-stat">
+                        <div class="video-stat-label">TEMP RANGE</div>
+                        <div class="video-stat-value">-20 to 50°C</div>
+                    </div>
+                    <div class="video-stat">
+                        <div class="video-stat-label">SENSITIVITY</div>
+                        <div class="video-stat-value">0.05°C</div>
+                    </div>
+                    <div class="video-stat">
+                        <div class="video-stat-label">MODE</div>
+                        <div class="video-stat-value">Hot Spot</div>
+                    </div>
+                </div>
+                <div class="video-controls">
+                    <button class="ctrl-btn" onclick="toggleFullscreen(1)">⛶ Full</button>
+                    <button class="ctrl-btn">📷 Snapshot</button>
+                    <button class="ctrl-btn">🎨 Palette</button>
+                </div>
+            </div>
+            
+            <div class="video-card">
+                <div class="video-header">
+                    <div class="video-title"><span>👁️</span> FPV</div>
+                    <div class="video-status">LIVE</div>
+                </div>
+                <div class="video-container">
+                    <div class="video-overlay">
+                        <div class="video-tag recording">● REC</div>
+                        <div class="video-tag">1080p</div>
+                    </div>
+                    <div class="video-placeholder">
+                        <span>👁️</span>
+                        <p>FPV Camera Feed</p>
+                    </div>
+                </div>
+                <div class="video-info">
+                    <div class="video-stat">
+                        <div class="video-stat-label">FPS</div>
+                        <div class="video-stat-value">60</div>
+                    </div>
+                    <div class="video-stat">
+                        <div class="video-stat-label">LATENCY</div>
+                        <div class="video-stat-value">28ms</div>
+                    </div>
+                    <div class="video-stat">
+                        <div class="video-stat-label">FOV</div>
+                        <div class="video-stat-value">150°</div>
+                    </div>
+                </div>
+                <div class="video-controls">
+                    <button class="ctrl-btn" onclick="toggleFullscreen(2)">⛶ Full</button>
+                    <button class="ctrl-btn">📷 Snapshot</button>
+                    <button class="ctrl-btn">🖥️ PiP</button>
+                </div>
+            </div>
+            
+            <div class="video-card">
+                <div class="video-header">
+                    <div class="video-title"><span>📡</span> Downward</div>
+                    <div class="video-status">LIVE</div>
+                </div>
+                <div class="video-container">
+                    <div class="video-overlay">
+                        <div class="video-tag hd">4K</div>
+                    </div>
+                    <div class="video-placeholder">
+                        <span>📡</span>
+                        <p>Downward Camera Feed</p>
+                    </div>
+                </div>
+                <div class="video-info">
+                    <div class="video-stat">
+                        <div class="video-stat-label">FPS</div>
+                        <div class="video-stat-value">30</div>
+                    </div>
+                    <div class="video-stat">
+                        <div class="video-stat-label">MODE</div>
+                        <div class="video-stat-value">Survey</div>
+                    </div>
+                    <div class="video-stat">
+                        <div class="video-stat-label">OVERLAP</div>
+                        <div class="video-stat-value">80%</div>
+                    </div>
+                </div>
+                <div class="video-controls">
+                    <button class="ctrl-btn">⛶ Full</button>
+                    <button class="ctrl-btn">📷 Snapshot</button>
+                    <button class="ctrl-btn">📊 Grid</button>
+                </div>
+            </div>
+            
+            <div class="video-card">
+                <div class="video-header">
+                    <div class="video-title"><span>🔦</span> Spotlight</div>
+                    <div class="video-status">OFF</div>
+                </div>
+                <div class="video-container" style="background: #111;">
+                    <div class="video-placeholder">
+                        <span>💡</span>
+                        <p>Spotlight Camera (Light Off)</p>
+                    </div>
+                </div>
+                <div class="video-info">
+                    <div class="video-stat">
+                        <div class="video-stat-label">POWER</div>
+                        <div class="video-stat-value">OFF</div>
+                    </div>
+                    <div class="video-stat">
+                        <div class="video-stat-label">INTENSITY</div>
+                        <div class="video-stat-value">0%</div>
+                    </div>
+                    <div class="video-stat">
+                        <div class="video-stat-label">MODE</div>
+                        <div class="video-stat-value">Manual</div>
+                    </div>
+                </div>
+                <div class="video-controls">
+                    <button class="ctrl-btn">⛶ Full</button>
+                    <button class="ctrl-btn">💡 Toggle</button>
+                    <button class="ctrl-btn">🎚️ Dim</button>
+                </div>
+            </div>
+            
+            <div class="video-card">
+                <div class="video-header">
+                    <div class="video-title"><span>🔍</span> Zoom</div>
+                    <div class="video-status">LIVE</div>
+                </div>
+                <div class="video-container">
+                    <div class="video-overlay">
+                        <div class="video-tag hd">30X</div>
+                    </div>
+                    <div class="video-placeholder">
+                        <span>🔍</span>
+                        <p>Optical Zoom Camera</p>
+                    </div>
+                </div>
+                <div class="video-info">
+                    <div class="video-stat">
+                        <div class="video-stat-label">ZOOM</div>
+                        <div class="video-stat-value">15X</div>
+                    </div>
+                    <div class="video-stat">
+                        <div class="video-stat-label">FOCUS</div>
+                        <div class="video-stat-value">Auto</div>
+                    </div>
+                    <div class="video-stat">
+                        <div class="video-stat-label">STABILIZE</div>
+                        <div class="video-stat-value">ON</div>
+                    </div>
+                </div>
+                <div class="video-controls">
+                    <button class="ctrl-btn">⛶ Full</button>
+                    <button class="ctrl-btn">🔍 Zoom+</button>
+                    <button class="ctrl-btn">🔍 Zoom-</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="controls-bar">
+            <div class="control-group">
+                <button class="btn btn-primary">Start Recording All</button>
+                <button class="btn btn-secondary">📷 Capture All</button>
+                <button class="btn btn-secondary">⏹️ Stop Recording</button>
+            </div>
+            <div class="control-group">
+                <button class="btn btn-secondary">📁 Browse Recordings</button>
+                <button class="btn btn-secondary">⚙️ Camera Settings</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function toggleFullscreen(index) {
+            // Would open fullscreen modal
+            alert('Fullscreen view for camera ' + (index + 1));
+        }
+        
+        const user = sessionStorage.getItem('user');
+        if (!user) window.location.href = 'login.html';
+    </script>
+</body>
+</html>

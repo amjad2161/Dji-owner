@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="he">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkyCore Security v7.2 — Command Center</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap');
+        
+        :root {
+            --primary: #00ff9d;
+            --secondary: #00cc7a;
+            --danger: #ff3366;
+            --warning: #ffcc00;
+            --bg: #0a0a0a;
+            --card: #111111;
+            --border: #222222;
+        }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Inter', system_ui, sans-serif;
+            background: var(--bg);
+            color: #ffffff;
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #111111, #1a1a1a);
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            background: linear-gradient(90deg, var(--primary), #00cc7a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .status-bar {
+            display: flex;
+            gap: 24px;
+            font-size: 14px;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--primary);
+            box-shadow: 0 0 8px var(--primary);
+        }
+        
+        .main-container {
+            display: flex;
+            height: calc(100vh - 64px);
+        }
+        
+        #map {
+            flex: 1;
+            min-height: 100%;
+        }
+        
+        .control-panel {
+            width: 380px;
+            background: var(--card);
+            border-left: 1px solid var(--border);
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        .panel-section {
+            margin-bottom: 24px;
+        }
+        
+        .panel-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .drone-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        
+        .drone-card {
+            background: #1a1a1a;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .drone-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+        }
+        
+        .drone-card.mine {
+            border-color: var(--primary);
+            background: rgba(0, 255, 157, 0.05);
+        }
+        
+        .drone-card.hostile {
+            border-color: var(--danger);
+            background: rgba(255, 51, 102, 0.05);
+        }
+        
+        .drone-card.selected {
+            border-color: #ffff00;
+            box-shadow: 0 0 0 3px rgba(255, 255, 0, 0.2);
+        }
+        
+        .drone-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+        
+        .drone-id {
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .drone-type {
+            font-size: 11px;
+            color: #888;
+        }
+        
+        .drone-stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #aaa;
+        }
+        
+        .battery {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .battery-bar {
+            width: 40px;
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        
+        .battery-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), #00cc7a);
+            transition: width 0.3s ease;
+        }
+        
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        .form-label {
+            display: block;
+            font-size: 13px;
+            color: #aaa;
+            margin-bottom: 6px;
+        }
+        
+        .form-input, .form-select {
+            width: 100%;
+            padding: 12px 16px;
+            background: #1a1a1a;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            transition: border-color 0.2s ease;
+        }
+        
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: #000;
+            font-weight: 700;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0, 255, 157, 0.4);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #ff3366, #cc0022);
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(255, 51, 102, 0.4);
+        }
+        
+        .threat-indicator {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .threat-low { background: var(--primary); }
+        .threat-medium { background: var(--warning); }
+        .threat-high { background: #ff8800; }
+        .threat-critical { background: var(--danger); }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.4; }
+            100% { opacity: 1; }
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 16px;
+        }
+        
+        .stat-card {
+            background: #1a1a1a;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        
+        .stat-label {
+            font-size: 11px;
+            color: #888;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>🛡️ SkyCore Security v7.2</h1>
+            <div style="font-size: 12px; color: #666; margin-top: 4px;">REVOLUTIONARY MILITARY GRADE • 124 MODULES</div>
+        </div>
+        
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="status-dot"></div>
+                <span>OPERATIONAL</span>
+            </div>
+            <div class="status-item">
+                <span>Operator: <strong>AUTHORIZED</strong></span>
+            </div>
+            <div class="status-item">
+                <span>Threat Level: <span id="threatLevel" style="color: #00ff9d; font-weight: 600;">LOW</span></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div id="map"></div>
+        
+        <div class="control-panel">
+            <!-- Quick Stats -->
+            <div class="panel-section">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="droneCount">8</div>
+                        <div class="stat-label">ACTIVE DRONES</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="threatCount">2</div>
+                        <div class="stat-label">THREATS</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Drone Selection -->
+            <div class="panel-section">
+                <div class="panel-title">🎮 Drone Fleet</div>
+                <div class="drone-grid" id="droneGrid">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+            
+            <!-- Mission Parameters -->
+            <div class="panel-section">
+                <div class="panel-title">⚙️ Mission Parameters</div>
+                
+                <div class="form-group">
+                    <label class="form-label">ALTITUDE (meters)</label>
+                    <input type="range" id="altitudeSlider" min="10" max="500" value="50" step="5" 
+                           oninput="updateAltitudeValue(this.value)">
+                    <div style="display: flex; justify-content: space-between; font-size: 12px; color: #888;">
+                        <span>10m</span>
+                        <span id="altitudeValue">50m</span>
+                        <span>500m</span>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">SPEED (m/s)</label>
+                    <input type="range" id="speedSlider" min="1" max="30" value="10" step="1"
+                           oninput="updateSpeedValue(this.value)">
+                    <div style="display: flex; justify-content: space-between; font-size: 12px; color: #888;">
+                        <span>1 m/s</span>
+                        <span id="speedValue">10 m/s</span>
+                        <span>30 m/s</span>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">LIGHTING MODE</label>
+                    <select id="lightingMode" class="form-select">
+                        <option value="off">🔦 OFF (Stealth Mode)</option>
+                        <option value="low">🌙 LOW</option>
+                        <option value="medium" selected>☀️ MEDIUM</option>
+                        <option value="high">🔆 HIGH</option>
+                        <option value="strobe">⚡ STROBE (Warning)</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="panel-section">
+                <button onclick="executeMission()" class="btn btn-primary" style="margin-bottom: 8px;">
+                    🚀 EXECUTE MISSION
+                </button>
+                
+                <button onclick="launchDefensiveSwarm()" class="btn btn-danger">
+                    🛡️ LAUNCH DEFENSIVE SWARM
+                </button>
+                
+                <button onclick="emergencyLockdown()" class="btn btn-danger" style="margin-top: 8px; background: #660000;">
+                    🚨 EMERGENCY LOCKDOWN
+                </button>
+            </div>
+            
+            <!-- System Status -->
+            <div class="panel-section" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border);">
+                <div style="font-size: 11px; color: #666; text-align: center;">
+                    SkyCore Security v7.2 • 124 Modules • 10/10<br>
+                    Last Update: <span id="lastUpdate">just now</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Initialize map
+        const map = L.map('map', {
+            zoomControl: false,
+            attributionControl: false
+        }).setView([32.0853, 34.7818], 12);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            className: 'map-tiles'
+        }).addTo(map);
+        
+        // State
+        let selectedDrone = null;
+        let waypointMarker = null;
+        let drones = [];
+        let markers = [];
+        let threatLevel = 'LOW';
+        
+        // Sample data
+        function refreshDrones() {
+            drones = [
+                { 
+                    id: "FRIENDLY-01", 
+                    type: "Mavic 3 Pro", 
+                    isMine: true, 
+                    lat: 32.0853, 
+                    lon: 34.7818, 
+                    alt: 48, 
+                    battery: 84, 
+                    status: "online",
+                    role: "SCOUT"
+                },
+                { 
+                    id: "FRIENDLY-02", 
+                    type: "Mavic Air 3", 
+                    isMine: true, 
+                    lat: 32.079, 
+                    lon: 34.772, 
+                    alt: 55, 
+                    battery: 67, 
+                    status: "online",
+                    role: "DEFENDER"
+                },
+                { 
+                    id: "FRIENDLY-03", 
+                    type: "PX4 Custom", 
+                    isMine: true, 
+                    lat: 32.092, 
+                    lon: 34.795, 
+                    alt: 42, 
+                    battery: 91, 
+                    status: "online",
+                    role: "ATTACK"
+                },
+                { 
+                    id: "UNKNOWN-01", 
+                    type: "Commercial Drone", 
+                    isMine: false, 
+                    lat: 32.098, 
+                    lon: 34.788, 
+                    alt: 32, 
+                    battery: 71, 
+                    status: "online",
+                    role: "UNKNOWN"
+                },
+                { 
+                    id: "HOSTILE-01", 
+                    type: "FPV Racing", 
+                    isMine: false, 
+                    lat: 32.105, 
+                    lon: 34.802, 
+                    alt: 22, 
+                    battery: 39, 
+                    status: "online",
+                    role: "HOSTILE"
+                }
+            ];
+            
+            renderDroneGrid();
+            updateMapMarkers();
+            updateStats();
+        }
+        
+        function renderDroneGrid() {
+            const container = document.getElementById('droneGrid');
+            container.innerHTML = '';
+            
+            drones.forEach(drone => {
+                const card = document.createElement('div');
+                card.className = `drone-card ${drone.isMine ? 'mine' : 'hostile'} ${selectedDrone?.id === drone.id ? 'selected' : ''}`;
+                
+                const batteryPercent = drone.battery;
+                const batteryColor = batteryPercent > 50 ? '#00ff9d' : batteryPercent > 20 ? '#ffcc00' : '#ff3366';
+                
+                card.innerHTML = `
+                    <div class="drone-header">
+                        <div>
+                            <div class="drone-id">${drone.id}</div>
+                            <div class="drone-type">${drone.type}</div>
+                        </div>
+                        <div class="threat-indicator ${getThreatClass(drone)}"></div>
+                    </div>
+                    
+                    <div class="drone-stats">
+                        <div>Alt: ${drone.alt}m</div>
+                        <div class="battery">
+                            <span>${batteryPercent}%</span>
+                            <div class="battery-bar">
+                                <div class="battery-fill" style="width: ${batteryPercent}%; background: ${batteryColor}"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 8px; font-size: 11px; color: #666;">
+                        ${drone.role} • ${drone.status}
+                    </div>
+                `;
+                
+                if (drone.isMine) {
+                    card.onclick = () => selectDrone(drone, card);
+                } else {
+                    card.onclick = () => {
+                        alert(`⚠️ ${drone.id} is NOT in your fleet.\n\nYou can only command friendly drones.`);
+                    };
+                }
+                
+                container.appendChild(card);
+            });
+        }
+        
+        function getThreatClass(drone) {
+            if (drone.isMine) return 'threat-low';
+            if (drone.role === 'HOSTILE') return 'threat-critical';
+            return 'threat-medium';
+        }
+        
+        function selectDrone(drone, element) {
+            selectedDrone = drone;
+            
+            // Update UI
+            document.querySelectorAll('.drone-card').forEach(el => el.classList.remove('selected'));
+            element.classList.add('selected');
+            
+            // Show notification
+            showNotification(`✅ SELECTED: ${drone.id}`, 'success');
+        }
+        
+        function updateMapMarkers() {
+            // Clear existing markers
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+            
+            drones.forEach(drone => {
+                const color = drone.isMine ? '#00ff9d' : '#ff3366';
+                const size = drone.isMine ? 10 : 8;
+                
+                const marker = L.circleMarker([drone.lat, drone.lon], {
+                    color: color,
+                    fillColor: color,
+                    fillOpacity: 0.9,
+                    radius: size,
+                    weight: 3
+                }).addTo(map);
+                
+                marker.bindPopup(`
+                    <div style="min-width: 180px;">
+                        <strong style="color: ${drone.isMine ? '#00ff9d' : '#ff3366'}">${drone.id}</strong><br>
+                        <span style="color: #888;">${drone.type}</span><br><br>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
+                            <div>Altitude: <strong>${drone.alt}m</strong></div>
+                            <div>Battery: <strong>${drone.battery}%</strong></div>
+                            <div>Status: <strong>${drone.status}</strong></div>
+                            <div>Role: <strong>${drone.role}</strong></div>
+                        </div>
+                    </div>
+                `);
+                
+                markers.push(marker);
+            });
+        }
+        
+        function updateAltitudeValue(value) {
+            document.getElementById('altitudeValue').innerText = value + 'm';
+        }
+        
+        function updateSpeedValue(value) {
+            document.getElementById('speedValue').innerText = value + ' m/s';
+        }
+        
+        function updateStats() {
+            document.getElementById('droneCount').innerText = drones.length;
+            
+            const threats = drones.filter(d => !d.isMine).length;
+            document.getElementById('threatCount').innerText = threats;
+            
+            // Update threat level
+            const threatLevelEl = document.getElementById('threatLevel');
+            if (threats === 0) {
+                threatLevelEl.innerHTML = 'LOW';
+                threatLevelEl.style.color = '#00ff9d';
+            } else if (threats <= 2) {
+                threatLevelEl.innerHTML = 'MEDIUM';
+                threatLevelEl.style.color = '#ffcc00';
+            } else {
+                threatLevelEl.innerHTML = 'HIGH';
+                threatLevelEl.style.color = '#ff3366';
+            }
+        }
+        
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+                background: ${type === 'success' ? '#003322' : type === 'error' ? '#330000' : '#112233'};
+                color: ${type === 'success' ? '#00ff9d' : type === 'error' ? '#ff3366' : '#00ccff'};
+                padding: 12px 24px; border-radius: 8px; font-size: 14px;
+                border: 1px solid ${type === 'success' ? '#00ff9d' : type === 'error' ? '#ff3366' : '#00ccff'};
+                z-index: 10000; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            `;
+            notification.innerHTML = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.transition = 'all 0.3s ease';
+                notification.style.opacity = '0';
+                setTimeout(() => notification.remove(), 300);
+            }, 2500);
+        }
+        
+        // Map click handler
+        map.on('click', function(e) {
+            if (!selectedDrone) {
+                showNotification('⚠️ Please select a friendly drone first', 'error');
+                return;
+            }
+            
+            const lat = e.latlng.lat;
+            const lon = e.latlng.lng;
+            
+            if (waypointMarker) map.removeLayer(waypointMarker);
+            
+            waypointMarker = L.marker([lat, lon], {
+                icon: L.divIcon({
+                    className: 'custom-waypoint',
+                    html: '🎯',
+                    iconSize: [36, 36],
+                    iconAnchor: [18, 18]
+                })
+            }).addTo(map);
+            
+            selectedDrone.target = { lat, lon };
+            showNotification(`🎯 Waypoint set for ${selectedDrone.id}`, 'success');
+        });
+        
+        function executeMission() {
+            if (!selectedDrone || !selectedDrone.target) {
+                showNotification('⚠️ Please select a drone and set a waypoint', 'error');
+                return;
+            }
+            
+            const altitude = parseFloat(document.getElementById('altitudeSlider').value);
+            const speed = parseFloat(document.getElementById('speedSlider').value);
+            const lighting = document.getElementById('lightingMode').value;
+            
+            const mission = {
+                drone_id: selectedDrone.id,
+                target: { ...selectedDrone.target, alt: altitude },
+                speed: speed,
+                lighting: lighting,
+                timestamp: new Date().toISOString()
+            };
+            
+            // Simulate mission execution
+            const popup = L.popup()
+                .setLatLng([selectedDrone.target.lat, selectedDrone.target.lon])
+                .setContent(`
+                    <div style="text-align: center; min-width: 200px;">
+                        <strong style="color: #00ff9d;">🚀 MISSION EXECUTED</strong><br><br>
+                        <div style="text-align: left; font-size: 13px;">
+                            <strong>Drone:</strong> ${selectedDrone.id}<br>
+                            <strong>Target:</strong> ${altitude}m @ ${speed}m/s<br>
+                            <strong>Lighting:</strong> ${lighting}<br>
+                            <strong>Status:</strong> <span style="color: #00ff9d;">IN PROGRESS</span>
+                        </div>
+                    </div>
+                `)
+                .openOn(map);
+            
+            // Simulate drone movement
+            setTimeout(() => {
+                if (waypointMarker) map.removeLayer(waypointMarker);
+                
+                // Update drone position
+                selectedDrone.lat = selectedDrone.target.lat;
+                selectedDrone.lon = selectedDrone.target.lon;
+                selectedDrone.alt = altitude;
+                
+                updateMapMarkers();
+                renderDroneGrid();
+                
+                showNotification(`✅ MISSION COMPLETE - ${selectedDrone.id} arrived at target`, 'success');
+                selectedDrone = null;
+                
+                // Update stats
+                updateStats();
+            }, 3000);
+        }
+        
+        function launchDefensiveSwarm() {
+            const threats = drones.filter(d => !d.isMine);
+            
+            if (threats.length === 0) {
+                showNotification('✅ No threats detected', 'success');
+                return;
+            }
+            
+            showNotification(`🛡️ Launching Defensive Swarm against ${threats.length} threats...`, 'info');
+            
+            setTimeout(() => {
+                showNotification('✅ Defensive Swarm deployed successfully', 'success');
+                
+                // Update threat level
+                document.getElementById('threatLevel').innerHTML = 'MEDIUM';
+                document.getElementById('threatLevel').style.color = '#ffcc00';
+            }, 1500);
+        }
+        
+        function emergencyLockdown() {
+            if (confirm('🚨 EMERGENCY LOCKDOWN?\n\nThis will freeze ALL drone operations immediately.')) {
+                showNotification('🔒 SYSTEM LOCKED - All operations halted', 'error');
+                
+                // Disable all controls
+                document.querySelectorAll('button').forEach(btn => {
+                    btn.disabled = true;
+                    btn.style.opacity = '0.5';
+                });
+                
+                setTimeout(() => {
+                    alert('🔒 EMERGENCY LOCKDOWN ACTIVE\n\nOnly authorized operators can unlock the system.');
+                }, 500);
+            }
+        }
+        
+        function updateLastUpdate() {
+            const el = document.getElementById('lastUpdate');
+            if (el) el.innerText = 'just now';
+        }
+        
+        // Initialize
+        function init() {
+            refreshDrones();
+            
+            // Set initial slider values
+            document.getElementById('altitudeValue').innerText = '50m';
+            document.getElementById('speedValue').innerText = '10 m/s';
+            
+            // Simulate live updates
+            setInterval(() => {
+                updateLastUpdate();
+                
+                // Randomly move one drone slightly for demo
+                if (drones.length > 0 && Math.random() > 0.7) {
+                    const randomDrone = drones[Math.floor(Math.random() * drones.length)];
+                    randomDrone.lat += (Math.random() - 0.5) * 0.0005;
+                    randomDrone.lon += (Math.random() - 0.5) * 0.0005;
+                    updateMapMarkers();
+                }
+            }, 5000);
+            
+            // Welcome message
+            setTimeout(() => {
+                showNotification('🛡️ SkyCore Security v7.2 - REVOLUTIONARY MODE ACTIVE', 'success');
+            }, 800);
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && selectedDrone) {
+                    selectedDrone = null;
+                    document.querySelectorAll('.drone-card').forEach(el => el.classList.remove('selected'));
+                    showNotification('Selection cleared', 'info');
+                }
+                
+                if (e.key.toLowerCase() === 'l' && selectedDrone) {
+                    executeMission();
+                }
+            });
+            
+            console.log('%c[SKYCORE] Professional Dashboard v2.0 initialized', 'color: #00ff9d');
+        }
+        
+        // Start the application
+        init();
+    </script>
+</body>
+</html>

@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkyCore - Advanced Drone Control</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0f; color: #e0e0e0; }
+        .dashboard { display: grid; grid-template-columns: 1fr 300px; grid-template-rows: auto 1fr auto; gap: 12px; padding: 12px; height: 100vh; }
+        .header { grid-column: 1/-1; display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: linear-gradient(135deg, #1a1a2e, #16213e); border-radius: 12px; border: 1px solid #2a2a4a; }
+        .header h1 { font-size: 1.5rem; background: linear-gradient(90deg, #00d4ff, #7b2cbf); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .status-badge { padding: 6px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+        .status-connected { background: #00ff8822; color: #00ff88; border: 1px solid #00ff8844; }
+        .status-warning { background: #ffaa0022; color: #ffaa00; border: 1px solid #ffaa0044; }
+        .status-danger { background: #ff444422; color: #ff4444; border: 1px solid #ff444444; }
+        
+        /* Map Section */
+        .map-container { grid-column: 1; position: relative; border-radius: 12px; overflow: hidden; border: 1px solid #2a2a4a; }
+        #map { height: 100%; min-height: 400px; }
+        .map-overlay { position: absolute; top: 12px; left: 12px; z-index: 1000; background: #1a1a2e99; padding: 12px; border-radius: 8px; backdrop-filter: blur(10px); }
+        .map-overlay h3 { font-size: 0.85rem; margin-bottom: 8px; color: #00d4ff; }
+        
+        /* Sidebar */
+        .sidebar { grid-column: 2; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+        .panel { background: linear-gradient(135deg, #1a1a2e, #16213e); border-radius: 12px; border: 1px solid #2a2a4a; padding: 16px; }
+        .panel-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 12px; color: #00d4ff; display: flex; align-items: center; gap: 8px; }
+        .panel-title::before { content: ''; width: 4px; height: 16px; background: #00d4ff; border-radius: 2px; }
+        
+        /* Telemetry Cards */
+        .telemetry-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .telemetry-card { background: #0f0f1a; border-radius: 8px; padding: 12px; text-align: center; }
+        .telemetry-value { font-size: 1.5rem; font-weight: 700; color: #fff; }
+        .telemetry-label { font-size: 0.7rem; color: #888; margin-top: 4px; }
+        .telemetry-good { color: #00ff88; }
+        .telemetry-warning { color: #ffaa00; }
+        .telemetry-danger { color: #ff4444; }
+        
+        /* Drone Detection */
+        .drone-list { max-height: 200px; overflow-y: auto; }
+        .drone-item { display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #0f0f1a; border-radius: 6px; margin-bottom: 6px; }
+        .drone-name { font-size: 0.85rem; font-weight: 600; }
+        .drone-protocol { font-size: 0.7rem; color: #888; }
+        .drone-confidence { font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; }
+        .confidence-high { background: #00ff8822; color: #00ff88; }
+        .confidence-medium { background: #ffaa0022; color: #ffaa00; }
+        .confidence-low { background: #ff444422; color: #ff4444; }
+        
+        /* Spectrum Visualizer */
+        .spectrum-container { background: #0f0f1a; border-radius: 8px; padding: 12px; }
+        .spectrum-canvas { width: 100%; height: 80px; background: #000; border-radius: 4px; }
+        .spectrum-legend { display: flex; justify-content: space-between; font-size: 0.65rem; color: #666; margin-top: 4px; }
+        .spectrum-label { display: flex; justify-content: space-between; margin-top: 8px; }
+        .spectrum-label span { font-size: 0.75rem; }
+        
+        /* Buttons */
+        .btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; font-size: 0.8rem; transition: all 0.2s; }
+        .btn-primary { background: linear-gradient(135deg, #00d4ff, #0099cc); color: #fff; }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px #00d4ff44; }
+        .btn-danger { background: linear-gradient(135deg, #ff4444, #cc3333); color: #fff; }
+        .btn-danger:hover { box-shadow: 0 4px 12px #ff444444; }
+        .btn-warning { background: linear-gradient(135deg, #ffaa00, #cc8800); color: #000; }
+        .btn-small { padding: 4px 10px; font-size: 0.7rem; }
+        .btn-group { display: flex; gap: 8px; margin-top: 8px; }
+        
+        /* Geofence Editor */
+        .geofence-list { max-height: 150px; overflow-y: auto; }
+        .geofence-item { display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #0f0f1a; border-radius: 6px; margin-bottom: 6px; border-left: 3px solid; }
+        .geofence-allowed { border-left-color: #00ff88; }
+        .geofence-restricted { border-left-color: #ff4444; }
+        .geofence-warning { border-left-color: #ffaa00; }
+        
+        /* Flight Logs */
+        .flight-log-item { padding: 8px; background: #0f0f1a; border-radius: 6px; margin-bottom: 6px; }
+        .flight-log-date { font-size: 0.75rem; color: #888; }
+        .flight-log-stats { font-size: 0.8rem; margin-top: 4px; display: flex; gap: 12px; }
+        .flight-log-stat { display: flex; align-items: center; gap: 4px; }
+        
+        /* Emergency Panel */
+        .emergency-actions { display: grid; gap: 8px; }
+        .emergency-action { padding: 12px; border-radius: 8px; cursor: pointer; text-align: center; font-weight: 600; }
+        .emergency-rth { background: linear-gradient(135deg, #ff6600, #cc5200); }
+        .emergency-land { background: linear-gradient(135deg, #ff4444, #cc3333); }
+        .emergency-hover { background: linear-gradient(135deg, #ffaa00, #cc8800); }
+        
+        /* Tabs */
+        .tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+        .tab { padding: 8px 12px; border-radius: 6px; font-size: 0.8rem; cursor: pointer; background: #0f0f1a; color: #888; }
+        .tab.active { background: #00d4ff22; color: #00d4ff; }
+        
+        /* Footer */
+        .footer { grid-column: 1/-1; display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #1a1a2e; border-radius: 12px; font-size: 0.75rem; color: #666; }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f0f1a; }
+        ::-webkit-scrollbar-thumb { background: #2a2a4a; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Header -->
+        <div class="header">
+            <h1>SkyCore Pro</h1>
+            <div style="display: flex; gap: 12px; align-items: center;">
+                <span class="status-badge status-connected" id="connectionStatus">Connected</span>
+                <span style="font-size: 0.8rem; color: #888;" id="currentTime"></span>
+            </div>
+        </div>
+        
+        <!-- Map -->
+        <div class="map-container">
+            <div class="map-overlay">
+                <h3>Airspace</h3>
+                <div style="font-size: 0.75rem; color: #888;">
+                    <div style="margin: 4px 0;"><span style="color: #00ff88;">●</span> Our Drone</div>
+                    <div style="margin: 4px 0;"><span style="color: #ff6600;">●</span> Detected Drones</div>
+                    <div style="margin: 4px 0;"><span style="color: #ffaa00;">●</span> ADS-B Aircraft</div>
+                    <div style="margin: 4px 0;"><span style="color: #ff4444;">●</span> Geofence</div>
+                </div>
+            </div>
+            <div id="map"></div>
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <!-- Telemetry -->
+            <div class="panel">
+                <div class="panel-title">Telemetry</div>
+                <div class="telemetry-grid">
+                    <div class="telemetry-card">
+                        <div class="telemetry-value telemetry-good" id="battery">100%</div>
+                        <div class="telemetry-label">Battery</div>
+                    </div>
+                    <div class="telemetry-card">
+                        <div class="telemetry-value" id="altitude">0m</div>
+                        <div class="telemetry-label">Altitude</div>
+                    </div>
+                    <div class="telemetry-card">
+                        <div class="telemetry-value" id="speed">0m/s</div>
+                        <div class="telemetry-label">Speed</div>
+                    </div>
+                    <div class="telemetry-card">
+                        <div class="telemetry-value" id="satellites">0</div>
+                        <div class="telemetry-label">GPS Sats</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Drone Detection -->
+            <div class="panel">
+                <div class="panel-title">Detected Drones</div>
+                <div class="drone-list" id="droneList">
+                    <div style="color: #666; font-size: 0.8rem; text-align: center; padding: 20px;">No drones detected</div>
+                </div>
+                <button class="btn btn-primary btn-small" onclick="simulateDrone()" style="width: 100%; margin-top: 8px;">Simulate Detection</button>
+            </div>
+            
+            <!-- Spectrum -->
+            <div class="panel">
+                <div class="panel-title">RF Spectrum</div>
+                <div class="spectrum-container">
+                    <canvas id="spectrumCanvas" class="spectrum-canvas"></canvas>
+                    <div class="spectrum-legend">
+                        <span>2.4 GHz</span>
+                        <span>5.8 GHz</span>
+                    </div>
+                </div>
+                <div class="spectrum-label">
+                    <span>DJI/WiFi</span>
+                    <span>FPV/Video</span>
+                </div>
+            </div>
+            
+            <!-- Geofence -->
+            <div class="panel">
+                <div class="panel-title">Geofence Zones</div>
+                <div class="geofence-list" id="geofenceList">
+                    <div class="geofence-item geofence-restricted">
+                        <div><strong>Airport</strong><br><span style="font-size: 0.7rem; color: #888;">5km radius</span></div>
+                        <span style="color: #ff4444; font-size: 0.75rem;">RESTRICTED</span>
+                    </div>
+                    <div class="geofence-item geofence-allowed">
+                        <div><strong>Park Zone</strong><br><span style="font-size: 0.7rem; color: #888;">Open airspace</span></div>
+                        <span style="color: #00ff88; font-size: 0.75rem;">ALLOWED</span>
+                    </div>
+                </div>
+                <button class="btn btn-primary btn-small" onclick="openGeofenceEditor()" style="width: 100%; margin-top: 8px;">Edit Geofence</button>
+            </div>
+            
+            <!-- Emergency -->
+            <div class="panel">
+                <div class="panel-title" style="color: #ff4444;">Emergency Actions</div>
+                <div class="emergency-actions">
+                    <div class="emergency-action emergency-rth" onclick="emergencyRTH()">🏠 Return to Home</div>
+                    <div class="emergency-action emergency-land" onclick="emergencyLand()">🛬 Emergency Land</div>
+                    <div class="emergency-action emergency-hover" onclick="emergencyHover()">⏸️ Hold Position</div>
+                </div>
+            </div>
+            
+            <!-- Flight Logs -->
+            <div class="panel">
+                <div class="panel-title">Recent Flights</div>
+                <div id="flightLogList">
+                    <div class="flight-log-item">
+                        <div class="flight-log-date">Today, 14:32</div>
+                        <div class="flight-log-stats">
+                            <span class="flight-log-stat">📍 5.2km</span>
+                            <span class="flight-log-stat">⏱️ 18:30</span>
+                            <span class="flight-log-stat">🔋 85%</span>
+                        </div>
+                    </div>
+                    <div class="flight-log-item">
+                        <div class="flight-log-date">Yesterday, 10:15</div>
+                        <div class="flight-log-stats">
+                            <span class="flight-log-stat">📍 8.1km</span>
+                            <span class="flight-log-stat">⏱️ 32:00</span>
+                            <span class="flight-log-stat">🔋 72%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+            <span>SkyCore v0.4.0 | Mode: <span id="flightMode">MANUAL</span></span>
+            <span>Lat: <span id="lat">0.000</span> Lon: <span id="lon">0.000</span></span>
+        </div>
+    </div>
+
+    <script>
+        // Initialize map
+        const map = L.map('map').setView([32.0855, 34.7820], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+        
+        // Drone marker
+        const droneMarker = L.circleMarker([32.0855, 34.7820], { radius: 8, color: '#00ff88', fillColor: '#00ff88', fillOpacity: 1 }).addTo(map);
+        
+        // Update time
+        function updateTime() {
+            document.getElementById('currentTime').textContent = new Date().toLocaleTimeString();
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+        
+        // Simulate drone detection
+        function simulateDrone() {
+            const drones = [
+                { id: 'DRONE_001', protocol: 'dji_ocusync', type: 'DJI Mavic 3', confidence: 0.95 },
+                { id: 'DRONE_002', protocol: 'autel_evo', type: 'Autel EVO II', confidence: 0.78 },
+                { id: 'DRONE_003', protocol: 'dji_lightbridge', type: 'DJI Phantom 4', confidence: 0.45 },
+            ];
+            const drone = drones[Math.floor(Math.random() * drones.length)];
+            
+            const listEl = document.getElementById('droneList');
+            const confidenceClass = drone.confidence > 0.8 ? 'confidence-high' : drone.confidence > 0.5 ? 'confidence-medium' : 'confidence-low';
+            
+            const item = document.createElement('div');
+            item.className = 'drone-item';
+            item.innerHTML = `
+                <div>
+                    <div class="drone-name">${drone.type}</div>
+                    <div class="drone-protocol">${drone.protocol} • ${drone.id}</div>
+                </div>
+                <span class="drone-confidence ${confidenceClass}">${Math.round(drone.confidence * 100)}%</span>
+            `;
+            listEl.prepend(item);
+            
+            // Add to map
+            const lat = 32.0855 + (Math.random() - 0.5) * 0.02;
+            const lon = 34.7820 + (Math.random() - 0.5) * 0.02;
+            L.circleMarker([lat, lon], { radius: 6, color: '#ff6600', fillColor: '#ff6600', fillOpacity: 0.7 }).addTo(map);
+        }
+        
+        // Emergency actions
+        function emergencyRTH() {
+            if (confirm('Return to Home?')) {
+                alert('RTH activated');
+            }
+        }
+        function emergencyLand() {
+            if (confirm('Emergency Land Now?')) {
+                alert('Emergency landing initiated');
+            }
+        }
+        function emergencyHover() {
+            alert('Holding position');
+        }
+        
+        // Spectrum visualizer
+        const canvas = document.getElementById('spectrumCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+        
+        function drawSpectrum() {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Simulate spectrum
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+            gradient.addColorStop(0, '#00ff88');
+            gradient.addColorStop(0.3, '#00d4ff');
+            gradient.addColorStop(0.6, '#ffaa00');
+            gradient.addColorStop(1, '#ff4444');
+            
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            for (let x = 0; x < canvas.width; x++) {
+                const y = canvas.height - (Math.random() * 30 + 10 + Math.sin(x * 0.05) * 20);
+                if (x === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+        setInterval(drawSpectrum, 100);
+        
+        // Geofence editor placeholder
+        function openGeofenceEditor() {
+            alert('Geofence editor would open here');
+        }
+        
+        // Fetch real data (placeholder)
+        async function updateTelemetry() {
+            // This would normally fetch from the API
+            document.getElementById('battery').textContent = '87%';
+            document.getElementById('altitude').textContent = '45m';
+            document.getElementById('speed').textContent = '12.3m/s';
+            document.getElementById('satellites').textContent = '14';
+            document.getElementById('lat').textContent = '32.0855';
+            document.getElementById('lon').textContent = '34.7820';
+        }
+        setInterval(updateTelemetry, 2000);
+    </script>
+</body>
+</html>

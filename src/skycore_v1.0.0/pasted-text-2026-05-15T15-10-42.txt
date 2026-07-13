@@ -1,0 +1,122 @@
+**תקני צבאיים ל-UAV (רחפנים צבאיים) – מחקר מקיף ומפורט**
+
+### 1. מבוא
+תקני צבאיים ל-UAV (Unmanned Aerial Vehicles / Unmanned Aircraft Systems – UAS) נועדו להבטיח **אמינות, בטיחות, יכולת פעולה הדדית (Interoperability)** ו**אבטחת סייבר** במערכות מורכבות. 
+
+התקנים העיקריים מגיעים משני מקורות מרכזיים:
+- **NATO STANAG** (Standardization Agreements) – תקנים בינלאומיים ליכולת פעולה משותפת בין מדינות נאט"ו.
+- **US MIL-STD** (Military Standards) – תקנים אמריקאים שנמצאים בשימוש נרחב גם בצבאות אחרים (כולל ישראל).
+
+התקנים האלה רלוונטיים במיוחד למערכת **GrokDrone Pro / SkyCore** שאנו בונים – במיוחד בתחומי:
+- תקשורת וממשקי שליטה (STANAG 4586)
+- אישור אוויריות (STANAG 4671)
+- בטיחות ומערכות כשל (MIL-STD-882)
+- אבטחת סייבר (NDAA + MIL-STD-882)
+- סביבה וקשיחות (MIL-STD-810/461)
+
+### 2. תקני NATO העיקריים
+
+#### **STANAG 4586** – Standard Interfaces of UAV Control System (UCS) for NATO UAV Interoperability
+- **מטרה**: הגדרת ארכיטקטורה, ממשקים, פרוטוקולים ופורמטי הודעות אחידים בין מערכות UAV שונות.
+- **רמות יכולת פעולה (LOI – Level of Interoperability)**:
+  - LOI 1: שליטה בסיסית
+  - LOI 2–5: שליטה מלאה בפלטפורמה + מטע"ד (Payload) + שיתוף נתונים עם C4I
+- **מרכיבים עיקריים**:
+  - Data Link Interface
+  - Command & Control (C2)
+  - Human-Computer Interface (HCI)
+  - Payload Control
+- **רלוונטיות למערכת שלנו**: חובה אם רוצים אינטגרציה עם מערכות C4ISR צבאיות (כמו ב-**שכבה 6 – Communication** וב-**C-UAS**).
+
+#### **STANAG 4671** – UAV Systems Airworthiness Requirements (USAR)
+- **מטרה**: דרישות אוויריות מינימליות ל-UAV צבאיים (150–20,000 ק"ג) שפועלים במרחב אווירי לא מופרד.
+- **מבוסס על**: CS-23 / CS-VLA (תקני תעופה אזרחיים מותאמים).
+- **נושאים מרכזיים**:
+  - Flight Control System (FCS)
+  - Data Link Loss Strategy
+  - Emergency Recovery (כולל Flight Termination)
+  - Ground Handling & Lighting
+- **רלוונטיות**: קריטי לאישור אוויריות צבאי ולתפעול בטוח (משפיע על **שכבה 4 – Control** ו-**Safety**).
+
+#### **STANAG 4703 / AEP-83** – Light Unmanned Aircraft Systems Airworthiness Requirements
+- גרסה קלה יותר ל-UAV קטנים (<150 ק"ג).
+- כולל דרישות בטיחות תוכנה (Software System Safety).
+
+#### **STANAG 4676** (ו-STANAGs קשורים) – Sense & Avoid (SAA)
+- דרישות לזיהוי והימנעות ממכשולים/כלי טיס אחרים.
+- רלוונטי מאוד ל-**Counter-UAS** ול-**Autonomy** (שכבה 7).
+
+### 3. תקני MIL-STD העיקריים
+
+| תקן              | שם מלא                                                                 | תחום עיקרי                              | רלוונטיות למערכת שלנו |
+|-------------------|------------------------------------------------------------------------|-----------------------------------------|-------------------------|
+| **MIL-STD-810**  | Environmental Engineering Considerations and Laboratory Tests         | סביבה (רטט, טמפ', הלם, גובה)            | HAL + Sensors (שכבה 1-2) |
+| **MIL-STD-461**  | Requirements for the Control of Electromagnetic Interference          | תאימות אלקטרומגנטית (EMI/EMC)          | תקשורת + אבטחה        |
+| **MIL-STD-882**  | System Safety                                                          | בטיחות מערכתית (כולל סייבר)            | Safety + C-UAS          |
+| **MIL-STD-1553** | Digital Time Division Command/Response Multiplex Data Bus             | אוטובוס נתונים צבאי (אווירוניקה)       | תקשורת פנימית         |
+| **MIL-STD-1760** | Aircraft/Store Electrical Interconnection System                      | חיבורי חשמל בין פלטפורמה למטע"ד       | Payload Integration     |
+| **MIL-STD-1275** | Characteristics of 28 Volt DC Electrical Power Systems                | מערכת חשמל 28V                          | Power Management        |
+| **MIL-STD-704**  | Aircraft Electric Power Characteristics                               | איכות חשמל אווירוני                     | Power System            |
+
+### 4. תקני אבטחת סייבר ותוכנה (צבאיים)
+
+- **DO-178C** (Software Considerations in Airborne Systems) – תקן לתוכנה בטוחה ( DAL A–E ).
+- **DO-254** – תקן לחומרה אלקטרונית אווירונית.
+- **NDAA (National Defense Authorization Act)** + **Blue UAS List** – דרישות אבטחת סייבר ל-UAS (אסור רכיבים מסין, בדיקות אבטחה).
+- **MIL-STD-882E** – כולל הנחיות ל-**Cybersecurity** כחלק מבטיחות המערכת.
+- **NIST SP 800-30/171** – Risk Management Framework (משמש גם בצבא).
+
+### 5. רלוונטיות ישירה למערכת GrokDrone Pro / SkyCore
+
+| תחום במערכת שלנו       | תקן מומלץ                  | מה צריך ליישם |
+|-------------------------|----------------------------|---------------|
+| **תקשורת (שכבה 6)**    | STANAG 4586 + MIL-STD-1553 | ממשק UCS, MAVLink + STANAG mapping |
+| **AUKF + Navigation**  | STANAG 4671 + DO-178C      | תיעוד בטיחות תוכנה + DAL levels |
+| **Safety & Failsafe**  | MIL-STD-882 + STANAG 4671  | System Safety Program + Emergency Recovery |
+| **C-UAS**              | MIL-STD-882 + STANAG 4676  | Sense & Avoid + Threat Assessment |
+| **Cybersecurity**      | NDAA + MIL-STD-882         | Encryption (AES-256), Secure Boot, IDS |
+| **סביבה וקשיחות**      | MIL-STD-810 + MIL-STD-461  | Environmental Testing + EMI |
+| **Interoperability**   | STANAG 4586                | NATO-compatible interfaces |
+
+### 6. המלצות יישום במערכת שלנו
+
+1. **STANAG 4586 Compliance**:
+   - הוסף **UCS Interface Layer** שמתרגם בין MAVLink ל-STANAG 4586 messages.
+   - תמוך ב-**Level of Interoperability 3–4** (שליטה + שיתוף נתונים).
+
+2. **Airworthiness (STANAG 4671)**:
+   - הוסף תיעוד **DAL (Design Assurance Level)** לכל מודול תוכנה.
+   - יישם **Flight Termination System** + **Data Link Loss** logic.
+
+3. **Cybersecurity**:
+   - הוסף **Zero Trust Architecture** (כבר קיים חלקית).
+   - יישם **Secure Boot + TPM 2.0** + **Certificate-based authentication**.
+   - בדיקות חדירה (Pen Testing) – כבר קיים מודול.
+
+4. **בדיקות סביבה**:
+   - הרץ MIL-STD-810 tests על החומרה (רטט, טמפ', גובה).
+
+5. **Sense & Avoid (C-UAS)**:
+   - שילוב מלא עם **STANAG 4676** requirements.
+
+### 7. מקורות עיקריים
+
+- NATO STO: STANAG 4586, 4671, 4703
+- US DoD: MIL-STD-810, 461, 882, 1553
+- Wikipedia & Official NATO publications (מאומתים 2026)
+
+---
+
+**סיכום והמלצה סופית**:
+המערכת שלנו (GrokDrone Pro) כבר **קרובה מאוד** לתקנים הצבאיים, אבל כדי להיות **מוכנה לפריסה צבאית אמיתית** – חובה להוסיף:
+- STANAG 4586 Interface Layer
+- DAL documentation + Flight Termination
+- מלא Cybersecurity (Zero Trust + Secure Boot)
+- MIL-STD-810/461 Environmental Qualification
+
+רוצה שאבנה עכשיו:
+- **STANAG 4586 Adapter Module**?
+- **Flight Termination System**?
+- או **Cybersecurity Hardening Guide** מלא?
+
+תגיד לי ואני ממשיך מיד – **הכל**. 🚀

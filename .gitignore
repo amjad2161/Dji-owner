@@ -1,0 +1,27 @@
+# Build / dependency artifacts — never commit
+node_modules/
+dist/
+build/
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets / local env
+.env
+.env.local
+.env.*.local
+*.local
+
+# OS cruft
+Thumbs.db
+ehthumbs.db
+.DS_Store
+desktop.ini
+
+# Claude Code local tooling config (not project content)
+.claude/

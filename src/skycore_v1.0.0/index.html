@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SkyCore Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, system-ui, sans-serif; background: #0e0f12; color: #e9ecef; }
+  header { padding: 16px 24px; background: #1a1d22; border-bottom: 1px solid #2a2e35; display: flex; justify-content: space-between; align-items: center; }
+  header h1 { margin: 0; font-size: 18px; font-weight: 500; letter-spacing: 0.5px; }
+  .pill { padding: 4px 10px; border-radius: 99px; font-size: 12px; }
+  .pill.ok { background: #1e3a25; color: #6cd47b; }
+  .pill.bad { background: #3a1e1e; color: #d46c6c; }
+  main { display: grid; grid-template-columns: 1fr 380px; gap: 0; height: calc(100vh - 56px); }
+  #map { height: 100%; background: #0e0f12; }
+  .leaflet-container { background: #1a1d22; }
+  .leaflet-tile-pane img { filter: invert(0.9) hue-rotate(180deg) saturate(0.5); }
+  aside { padding: 16px; overflow-y: auto; border-left: 1px solid #2a2e35; }
+  .card { background: #1a1d22; border: 1px solid #2a2e35; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+  .card h2 { margin: 0 0 10px; font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px; color: #8a93a0; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric .label { font-size: 10px; text-transform: uppercase; color: #6c757d; letter-spacing: 0.5px; }
+  .metric .value { font-size: 18px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .metric .unit { font-size: 11px; color: #8a93a0; margin-left: 3px; }
+  .controls button { padding: 8px 12px; margin: 3px; font-size: 13px; background: #2a2e35; color: #e9ecef; border: 1px solid #3a3e45; border-radius: 6px; cursor: pointer; }
+  .controls button:hover { background: #3a3e45; }
+  .controls button.danger { background: #3a1e1e; border-color: #5a2e2e; }
+  .controls button.primary { background: #1e3a4a; border-color: #2e5a7a; }
+  .controls input { padding: 6px; background: #0e0f12; color: #e9ecef; border: 1px solid #2a2e35; border-radius: 4px; font-size: 12px; }
+  .checklist-item { padding: 6px 0; border-bottom: 1px solid #2a2e35; font-size: 13px; }
+  .checklist-item:last-child { border-bottom: 0; }
+  .check-pass { color: #6cd47b; }
+  .check-warn { color: #f0c674; }
+  .check-fail { color: #d46c6c; }
+  .check-skip { color: #6c757d; }
+</style>
+</head>
+<body>
+<header>
+  <h1>SKYCORE</h1>
+  <span id="status" class="pill bad">disconnected</span>
+</header>
+<main>
+  <div id="map"></div>
+  <aside>
+    <section class="card">
+      <h2>Telemetry</h2>
+      <div class="grid">
+        <div class="metric"><div class="label">Alt</div><div class="value" id="m-alt">—<span class="unit">m</span></div></div>
+        <div class="metric"><div class="label">Battery</div><div class="value" id="m-bat">—<span class="unit">%</span></div></div>
+        <div class="metric"><div class="label">Yaw</div><div class="value" id="m-yaw">—<span class="unit">°</span></div></div>
+        <div class="metric"><div class="label">Mode</div><div class="value" id="m-mode" style="font-size:14px">—</div></div>
+        <div class="metric"><div class="label">GPS</div><div class="value" id="m-gps">—<span class="unit">sats</span></div></div>
+        <div class="metric"><div class="label">Voltage</div><div class="value" id="m-volt">—<span class="unit">V</span></div></div>
+      </div>
+    </section>
+
+    <section class="card controls">
+      <h2>Flight</h2>
+      <button class="primary" onclick="cmd('takeoff', {altitude: 10})">Takeoff 10m</button>
+      <button onclick="cmd('rth')">RTH</button>
+      <button class="danger" onclick="cmd('land')">Land</button>
+      <div style="margin-top:8px">
+        <button onclick="cmd('photo')">Photo</button>
+        <button onclick="cmd('record/start')">Rec start</button>
+        <button onclick="cmd('record/stop')">Rec stop</button>
+      </div>
+    </section>
+
+    <section class="card controls">
+      <h2>Goto</h2>
+      <p style="font-size:12px; color:#8a93a0; margin:0 0 8px">Click map to set target, then Goto.</p>
+      <input id="goto-lat" placeholder="lat" style="width:90px"/>
+      <input id="goto-lon" placeholder="lon" style="width:90px"/>
+      <input id="goto-alt" placeholder="alt" value="30" style="width:60px"/>
+      <button class="primary" onclick="goto()">Go</button>
+    </section>
+
+    <section class="card">
+      <h2>Pre-flight check</h2>
+      <button class="primary" onclick="runChecklist()" style="margin-bottom:8px">Run check</button>
+      <div id="checklist"></div>
+    </section>
+  </aside>
+</main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+let ws, map, droneMarker, trail = [], trailLine, homeMarker, gotoMarker;
+
+function initMap() {
+  map = L.map('map', { zoomControl: true }).setView([37.7749, -122.4194], 17);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap',
+    maxZoom: 19,
+  }).addTo(map);
+  trailLine = L.polyline([], { color: '#6cd47b', weight: 2 }).addTo(map);
+  map.on('click', (e) => {
+    document.getElementById('goto-lat').value = e.latlng.lat.toFixed(6);
+    document.getElementById('goto-lon').value = e.latlng.lng.toFixed(6);
+    if (gotoMarker) map.removeLayer(gotoMarker);
+    gotoMarker = L.marker(e.latlng, { opacity: 0.6 }).addTo(map);
+  });
+}
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/telemetry`);
+  ws.onopen = () => { document.getElementById('status').className = 'pill ok'; document.getElementById('status').textContent = 'connected'; };
+  ws.onclose = () => { document.getElementById('status').className = 'pill bad'; document.getElementById('status').textContent = 'disconnected'; setTimeout(connect, 1500); };
+  ws.onmessage = (e) => {
+    const t = JSON.parse(e.data);
+    document.getElementById('m-alt').firstChild.data = t.position.alt.toFixed(1);
+    document.getElementById('m-bat').firstChild.data = t.battery.percent.toFixed(0);
+    document.getElementById('m-yaw').firstChild.data = t.yaw.toFixed(0);
+    document.getElementById('m-mode').textContent = t.mode;
+    document.getElementById('m-gps').firstChild.data = t.gps.satellites;
+    document.getElementById('m-volt').firstChild.data = t.battery.voltage.toFixed(2);
+
+    const ll = [t.position.lat, t.position.lon];
+    if (!droneMarker) {
+      droneMarker = L.circleMarker(ll, { radius: 6, color: '#6cd47b', fillColor: '#6cd47b', fillOpacity: 0.8 }).addTo(map);
+      map.setView(ll, 17);
+    }
+    droneMarker.setLatLng(ll);
+    trail.push(ll);
+    if (trail.length > 1000) trail.shift();
+    trailLine.setLatLngs(trail);
+
+    if (t.home && !homeMarker) {
+      homeMarker = L.marker([t.home.lat, t.home.lon], {
+        icon: L.divIcon({ className: '', html: '<div style="background:#f0c674;width:10px;height:10px;border-radius:50%;border:2px solid #1a1d22"></div>', iconSize: [14, 14], iconAnchor: [7, 7] })
+      }).addTo(map).bindTooltip('Home');
+    }
+  };
+}
+
+async function cmd(path, body) {
+  await fetch('/api/' + path, { method: 'POST', headers: {'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : '{}' });
+}
+async function goto() {
+  const lat = parseFloat(document.getElementById('goto-lat').value);
+  const lon = parseFloat(document.getElementById('goto-lon').value);
+  const alt = parseFloat(document.getElementById('goto-alt').value);
+  if (isNaN(lat) || isNaN(lon)) return;
+  await cmd('goto', {lat, lon, alt});
+}
+async function runChecklist() {
+  const el = document.getElementById('checklist');
+  el.textContent = 'running...';
+  const r = await fetch('/api/preflight/checklist', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+  if (!r.ok) { el.textContent = 'failed'; return; }
+  const data = await r.json();
+  el.innerHTML = '';
+  for (const item of data.items) {
+    const cls = 'check-' + item.status;
+    const glyph = { pass: '✓', warn: '!', fail: '✗', skip: '-' }[item.status] || '?';
+    const div = document.createElement('div');
+    div.className = 'checklist-item';
+    div.innerHTML = `<span class="${cls}">${glyph}</span> <strong>${item.name}</strong> <span style="color:#8a93a0">${item.detail || ''}</span>`;
+    el.appendChild(div);
+  }
+}
+
+initMap();
+connect();
+</script>
+</body>
+</html>

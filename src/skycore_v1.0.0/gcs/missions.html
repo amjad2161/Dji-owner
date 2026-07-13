@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkyCore GCS - Missions</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-primary: #0a1628;
+            --bg-secondary: #0f1f38;
+            --bg-tertiary: #162a47;
+            --accent: #00d4ff;
+            --success: #00ff88;
+            --warning: #ffaa00;
+            --danger: #ff4444;
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --border: rgba(255, 255, 255, 0.1);
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        .header {
+            height: 70px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+        }
+        .logo { font-size: 24px; font-weight: 700; color: var(--accent); letter-spacing: 2px; }
+        .nav-menu { display: flex; gap: 5px; }
+        .nav-item { padding: 10px 20px; color: var(--text-secondary); text-decoration: none; border-radius: 8px; font-size: 14px; font-weight: 500; transition: all 0.2s; }
+        .nav-item:hover, .nav-item.active { background: rgba(0, 212, 255, 0.1); color: var(--accent); }
+        .main-content { padding: 30px; }
+        .page-title { font-size: 28px; font-weight: 600; margin-bottom: 25px; display: flex; align-items: center; gap: 15px; }
+        .page-title span { color: var(--accent); font-size: 20px; }
+        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
+        .toolbar-left { display: flex; gap: 10px; }
+        .search-box { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 10px 15px; color: var(--text-primary); width: 250px; }
+        .filter-btn { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 10px 15px; color: var(--text-secondary); cursor: pointer; }
+        .btn { padding: 12px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; }
+        .btn-primary { background: linear-gradient(135deg, var(--accent), #0099cc); color: var(--bg-primary); }
+        .mission-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; }
+        .mission-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 15px; padding: 25px; transition: all 0.3s; }
+        .mission-card:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); }
+        .mission-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px; }
+        .mission-title { font-size: 18px; font-weight: 600; }
+        .mission-status { padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+        .status-active { background: rgba(0, 255, 136, 0.2); color: var(--success); }
+        .status-planned { background: rgba(0, 212, 255, 0.2); color: var(--accent); }
+        .status-paused { background: rgba(255, 170, 0, 0.2); color: var(--warning); }
+        .mission-meta { display: flex; flex-direction: column; gap: 12px; }
+        .meta-item { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--text-secondary); }
+        .meta-item span { color: var(--accent); font-weight: 600; }
+        .mission-progress { margin: 20px 0; }
+        .progress-bar { height: 8px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--success)); border-radius: 4px; transition: width 0.3s; }
+        .progress-text { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+        .mission-actions { display: flex; gap: 10px; margin-top: 20px; }
+        .mission-actions .btn { flex: 1; padding: 10px; font-size: 13px; }
+        .btn-secondary { background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); }
+        .btn-danger { background: rgba(255, 68, 68, 0.2); border: 1px solid var(--danger); color: var(--danger); }
+        .waypoint-preview { background: var(--bg-tertiary); border-radius: 10px; padding: 15px; margin-top: 15px; }
+        .waypoint-title { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; }
+        .waypoint-list { display: flex; gap: 5px; flex-wrap: wrap; }
+        .waypoint-dot { width: 25px; height: 25px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; }
+        .empty-state { text-align: center; padding: 80px 20px; color: var(--text-muted); }
+        .empty-icon { font-size: 64px; margin-bottom: 20px; opacity: 0.5; }
+        .empty-title { font-size: 20px; margin-bottom: 10px; color: var(--text-secondary); }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">SKYCORE</div>
+        <nav class="nav-menu">
+            <a href="dashboard.html" class="nav-item">Dashboard</a>
+            <a href="missions.html" class="nav-item active">Missions</a>
+            <a href="threats.html" class="nav-item">Threats</a>
+            <a href="video.html" class="nav-item">Video</a>
+            <a href="telemetry.html" class="nav-item">Telemetry</a>
+            <a href="chat.html" class="nav-item">Commands</a>
+        </nav>
+    </header>
+    
+    <div class="main-content">
+        <h1 class="page-title">
+            <span>📋</span> Mission Planning
+        </h1>
+        
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <input type="text" class="search-box" placeholder="Search missions...">
+                <button class="filter-btn">All Status</button>
+                <button class="filter-btn">Sort by Date</button>
+            </div>
+            <button class="btn btn-primary" onclick="createMission()">+ New Mission</button>
+        </div>
+        
+        <div class="mission-grid">
+            <div class="mission-card">
+                <div class="mission-header">
+                    <div class="mission-title">Area Survey - North Field</div>
+                    <div class="mission-status status-active">Active</div>
+                </div>
+                <div class="mission-meta">
+                    <div class="meta-item">📍 <span>8</span> Waypoints</div>
+                    <div class="meta-item">📐 <span>2.5km²</span> Coverage Area</div>
+                    <div class="meta-item">⏱️ <span>18 min</span> Est. Duration</div>
+                    <div class="meta-item">🛡️ <span>60%</span> Battery Required</div>
+                </div>
+                <div class="mission-progress">
+                    <div class="progress-bar"><div class="progress-fill" style="width: 35%;"></div></div>
+                    <div class="progress-text">
+                        <span>3/8 waypoints completed</span>
+                        <span>35%</span>
+                    </div>
+                </div>
+                <div class="waypoint-preview">
+                    <div class="waypoint-title">Route Preview</div>
+                    <div class="waypoint-list">
+                        <div class="waypoint-dot">✓</div>
+                        <div class="waypoint-dot">✓</div>
+                        <div class="waypoint-dot">✓</div>
+                        <div class="waypoint-dot" style="background: var(--warning);">4</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">5</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">6</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">7</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">8</div>
+                    </div>
+                </div>
+                <div class="mission-actions">
+                    <button class="btn btn-secondary">Pause</button>
+                    <button class="btn btn-danger">Abort</button>
+                </div>
+            </div>
+            
+            <div class="mission-card">
+                <div class="mission-header">
+                    <div class="mission-title">Infrastructure Inspection</div>
+                    <div class="mission-status status-planned">Planned</div>
+                </div>
+                <div class="mission-meta">
+                    <div class="meta-item">📍 <span>12</span> Waypoints</div>
+                    <div class="meta-item">📐 <span>4.2km²</span> Coverage Area</div>
+                    <div class="meta-item">⏱️ <span>32 min</span> Est. Duration</div>
+                    <div class="meta-item">🛡️ <span>85%</span> Battery Required</div>
+                </div>
+                <div class="mission-progress">
+                    <div class="progress-bar"><div class="progress-fill" style="width: 0%;"></div></div>
+                    <div class="progress-text">
+                        <span>Scheduled for 14:30</span>
+                        <span>0%</span>
+                    </div>
+                </div>
+                <div class="waypoint-preview">
+                    <div class="waypoint-title">Route Preview</div>
+                    <div class="waypoint-list">
+                        <div class="waypoint-dot" style="background: var(--warning);">1</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">2</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">3</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">4</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">5</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">6</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">7</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">8</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">9</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">10</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">11</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">12</div>
+                    </div>
+                </div>
+                <div class="mission-actions">
+                    <button class="btn btn-primary">Start Mission</button>
+                    <button class="btn btn-secondary">Edit</button>
+                </div>
+            </div>
+            
+            <div class="mission-card">
+                <div class="mission-header">
+                    <div class="mission-title">Delivery Route - Warehouse A</div>
+                    <div class="mission-status status-paused">Paused</div>
+                </div>
+                <div class="mission-meta">
+                    <div class="meta-item">📍 <span>5</span> Waypoints</div>
+                    <div class="meta-item">📐 <span>1.8km²</span> Coverage Area</div>
+                    <div class="meta-item">⏱️ <span>12 min</span> Est. Duration</div>
+                    <div class="meta-item">🛡️ <span>40%</span> Battery Required</div>
+                </div>
+                <div class="mission-progress">
+                    <div class="progress-bar"><div class="progress-fill" style="width: 60%;"></div></div>
+                    <div class="progress-text">
+                        <span>3/5 waypoints completed</span>
+                        <span>60%</span>
+                    </div>
+                </div>
+                <div class="waypoint-preview">
+                    <div class="waypoint-title">Route Preview</div>
+                    <div class="waypoint-list">
+                        <div class="waypoint-dot">✓</div>
+                        <div class="waypoint-dot">✓</div>
+                        <div class="waypoint-dot">✓</div>
+                        <div class="waypoint-dot" style="background: var(--warning);">4</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">5</div>
+                    </div>
+                </div>
+                <div class="mission-actions">
+                    <button class="btn btn-primary">Resume</button>
+                    <button class="btn btn-secondary">Edit</button>
+                </div>
+            </div>
+            
+            <div class="mission-card">
+                <div class="mission-header">
+                    <div class="mission-title">Thermal Inspection - Solar Farm</div>
+                    <div class="mission-status status-planned">Planned</div>
+                </div>
+                <div class="mission-meta">
+                    <div class="meta-item">📍 <span>15</span> Waypoints</div>
+                    <div class="meta-item">📐 <span>5.5km²</span> Coverage Area</div>
+                    <div class="meta-item">⏱️ <span>45 min</span> Est. Duration</div>
+                    <div class="meta-item">🛡️ <span>95%</span> Battery Required</div>
+                </div>
+                <div class="mission-progress">
+                    <div class="progress-bar"><div class="progress-fill" style="width: 0%;"></div></div>
+                    <div class="progress-text">
+                        <span>Scheduled for tomorrow 08:00</span>
+                        <span>0%</span>
+                    </div>
+                </div>
+                <div class="waypoint-preview">
+                    <div class="waypoint-title">Route Preview</div>
+                    <div class="waypoint-list">
+                        <div class="waypoint-dot" style="background: var(--warning);">1</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">2</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">3</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">4</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">5</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">6</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">7</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">8</div>
+                        <div class="waypoint-dot" style="opacity: 0.3;">...</div>
+                    </div>
+                </div>
+                <div class="mission-actions">
+                    <button class="btn btn-primary">Start Mission</button>
+                    <button class="btn btn-secondary">Edit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function createMission() {
+            alert('Mission creation wizard would open here');
+        }
+        
+        const user = sessionStorage.getItem('user');
+        if (!user) window.location.href = 'login.html';
+    </script>
+</body>
+</html>

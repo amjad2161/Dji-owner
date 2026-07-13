@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SkyCore Security v6.2 - Operator Command Center</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0a0a0a; color: #00ff00; }
+        #map { height: 65vh; width: 100%; }
+        .header { padding: 15px 20px; background: #111; border-bottom: 3px solid #00ff00; display: flex; justify-content: space-between; align-items: center; }
+        .control-panel { 
+            position: absolute; top: 80px; right: 15px; 
+            background: rgba(0,0,0,0.95); padding: 18px; border-radius: 10px; 
+            border: 2px solid #00ff00; width: 340px; z-index: 1000; box-shadow: 0 0 20px rgba(0,255,0,0.3);
+        }
+        .drone-list { max-height: 220px; overflow-y: auto; margin: 12px 0; }
+        .drone-item { 
+            padding: 10px 12px; margin: 6px 0; background: #1a1a1a; border-radius: 6px; 
+            cursor: pointer; border: 2px solid #333; transition: all 0.2s;
+        }
+        .drone-item:hover { background: #222; border-color: #00ff00; transform: translateX(3px); }
+        .drone-item.mine { border-color: #00ff00; background: #002200; }
+        .drone-item.hostile { border-color: #ff3333; background: #330000; }
+        .drone-item.selected { border-color: #ffff00; box-shadow: 0 0 10px #ffff00; }
+        .settings { margin-top: 18px; }
+        input, select, button { 
+            background: #1a1a1a; color: #00ff00; border: 2px solid #00ff00; 
+            padding: 10px; margin: 6px 0; width: 100%; border-radius: 6px; font-size: 14px;
+        }
+        button { cursor: pointer; font-weight: bold; background: #003300; }
+        button:hover { background: #005500; }
+        .status-bar { 
+            padding: 8px 15px; background: #111; font-size: 13px; 
+            display: flex; justify-content: space-between; border-top: 1px solid #333;
+        }
+        .threat-level { font-weight: bold; }
+        .HIGH { color: #ff4444; }
+        .CRITICAL { color: #ff0000; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.3; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>🛡️ SkyCore Security v6.2</h1>
+            <div style="font-size: 13px; color: #888;">Operator Command Center | LEGAL MILITARY GRADE</div>
+        </div>
+        <div style="text-align: right; font-size: 13px;">
+            <div>Operator: <strong>AUTHORIZED</strong></div>
+            <div>System Status: <span style="color:#00ff00">ARMED</span></div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <div class="control-panel">
+        <h3 style="margin-top:0">🎮 Operator Control</h3>
+        
+        <div style="display:flex; gap:8px; margin-bottom:10px;">
+            <button onclick="refreshDrones()" style="flex:1">🔄 Refresh</button>
+            <button onclick="emergencyLockdown()" style="flex:1; background:#330000; border-color:#ff3333">🚨 LOCKDOWN</button>
+        </div>
+
+        <h4>📡 Drones in Area</h4>
+        <div class="drone-list" id="droneList"></div>
+
+        <div class="settings">
+            <h4>⚙️ Mission Parameters</h4>
+            
+            <label>Altitude (m):</label>
+            <input type="number" id="altitude" value="50" min="10" max="500">
+            
+            <label>Speed (m/s):</label>
+            <input type="number" id="speed" value="10" min="1" max="30">
+            
+            <label>Lighting Mode:</label>
+            <select id="lighting">
+                <option value="off">Off (Ghost Mode)</option>
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+                <option value="strobe">Strobe (Warning)</option>
+            </select>
+
+            <button onclick="sendMission()" style="margin-top:12px; font-size:15px; padding:12px;">
+                🚀 EXECUTE MISSION
+            </button>
+            
+            <button onclick="launchDefensiveSwarm()" style="background:#330000; border-color:#ff6666; margin-top:6px;">
+                🛡️ LAUNCH DEFENSIVE SWARM
+            </button>
+        </div>
+    </div>
+
+    <div class="status-bar">
+        <div>Threat Level: <span id="threatLevel" class="threat-level">LOW</span></div>
+        <div>Connected Drones: <span id="droneCount">4</span></div>
+        <div>Last Update: <span id="lastUpdate">just now</span></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const map = L.map('map').setView([32.0853, 34.7818], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        let selectedDrone = null;
+        let waypointMarker = null;
+        let drones = [];
+        let markers = [];
+
+        function refreshDrones() {
+            drones = [
+                { id: "FRIENDLY-01", type: "Mavic 3 Pro", isMine: true, lat: 32.0853, lon: 34.7818, alt: 48, battery: 84, status: "online" },
+                { id: "FRIENDLY-02", type: "Mavic Air 3", isMine: true, lat: 32.079, lon: 34.772, alt: 55, battery: 67, status: "online" },
+                { id: "UNKNOWN-01", type: "Commercial Drone", isMine: false, lat: 32.092, lon: 34.795, alt: 32, battery: 71, status: "online" },
+                { id: "HOSTILE-01", type: "FPV Racing", isMine: false, lat: 32.098, lon: 34.788, alt: 22, battery: 39, status: "online" }
+            ];
+            renderDroneList();
+            updateMapMarkers();
+            document.getElementById('droneCount').innerText = drones.length;
+        }
+
+        function renderDroneList() {
+            const container = document.getElementById('droneList');
+            container.innerHTML = '';
+            
+            drones.forEach(drone => {
+                const div = document.createElement('div');
+                div.className = `drone-item ${drone.isMine ? 'mine' : 'hostile'} ${selectedDrone?.id === drone.id ? 'selected' : ''}`;
+                div.innerHTML = `
+                    <strong>${drone.id}</strong> <span style="float:right; font-size:11px;">${drone.battery}%</span><br>
+                    <small>${drone.type} | Alt: ${drone.alt}m | ${drone.status}</small>
+                `;
+                
+                if (drone.isMine) {
+                    div.onclick = () => selectDrone(drone, div);
+                } else {
+                    div.onclick = () => {
+                        alert(`⚠️ ${drone.id} is NOT in your fleet.\nYou can only command your own drones.`);
+                    };
+                }
+                container.appendChild(div);
+            });
+        }
+
+        function selectDrone(drone, element) {
+            selectedDrone = drone;
+            
+            document.querySelectorAll('.drone-item').forEach(el => el.classList.remove('selected'));
+            element.classList.add('selected');
+            
+            alert(`✅ SELECTED: ${drone.id}\nNow click on the map to set waypoint.`);
+        }
+
+        function updateMapMarkers() {
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+            
+            drones.forEach(drone => {
+                const color = drone.isMine ? '#00ff00' : '#ff3333';
+                const marker = L.circleMarker([drone.lat, drone.lon], {
+                    color: color,
+                    fillColor: color,
+                    fillOpacity: 0.9,
+                    radius: drone.isMine ? 9 : 7,
+                    weight: 2
+                }).addTo(map);
+                
+                marker.bindPopup(`
+                    <strong>${drone.id}</strong><br>
+                    Type: ${drone.type}<br>
+                    Altitude: ${drone.alt}m<br>
+                    Battery: ${drone.battery}%
+                `);
+                markers.push(marker);
+            });
+        }
+
+        map.on('click', function(e) {
+            if (!selectedDrone) {
+                alert("⚠️ Please select one of YOUR drones first (green markers).");
+                return;
+            }
+            
+            const lat = e.latlng.lat;
+            const lon = e.latlng.lng;
+            
+            if (waypointMarker) map.removeLayer(waypointMarker);
+            
+            waypointMarker = L.marker([lat, lon], {
+                icon: L.divIcon({
+                    className: 'custom-waypoint',
+                    html: '🎯',
+                    iconSize: [32, 32],
+                    iconAnchor: [16, 16]
+                })
+            }).addTo(map);
+            
+            selectedDrone.target = { lat, lon };
+        });
+
+        function sendMission() {
+            if (!selectedDrone || !selectedDrone.target) {
+                alert("⚠️ Please select a drone and click on the map to set a waypoint.");
+                return;
+            }
+            
+            const altitude = parseFloat(document.getElementById('altitude').value);
+            const speed = parseFloat(document.getElementById('speed').value);
+            const lighting = document.getElementById('lighting').value;
+            
+            const mission = {
+                drone_id: selectedDrone.id,
+                target: { ...selectedDrone.target, alt: altitude },
+                speed: speed,
+                lighting: lighting,
+                timestamp: new Date().toISOString()
+            };
+            
+            console.log("🚀 Mission dispatched:", mission);
+            
+            const popup = L.popup()
+                .setLatLng([selectedDrone.target.lat, selectedDrone.target.lon])
+                .setContent(`
+                    <strong>🚀 MISSION EXECUTED</strong><br>
+                    Drone: <b>${selectedDrone.id}</b><br>
+                    Target: ${altitude}m @ ${speed}m/s<br>
+                    Lighting: ${lighting}
+                `)
+                .openOn(map);
+            
+            setTimeout(() => {
+                alert(`✅ MISSION COMPLETE\n${selectedDrone.id} has arrived at target.`);
+                selectedDrone = null;
+                refreshDrones();
+            }, 2800);
+        }
+
+        function launchDefensiveSwarm() {
+            if (confirm("🛡️ Launch Defensive Swarm against detected threats?")) {
+                alert("🚀 Defensive Swarm deployed!\nAll available friendly drones are now protecting the area.");
+                
+                // Simulate swarm activation
+                setTimeout(() => {
+                    document.getElementById('threatLevel').innerHTML = 'MEDIUM';
+                    document.getElementById('threatLevel').className = 'threat-level MEDIUM';
+                }, 1500);
+            }
+        }
+
+        function emergencyLockdown() {
+            if (confirm("🚨 EMERGENCY LOCKDOWN?\nThis will freeze ALL drone operations.")) {
+                alert("🔒 SYSTEM LOCKED\nOnly authorized operator can unlock.");
+                document.querySelectorAll('button').forEach(b => b.disabled = true);
+            }
+        }
+
+        function init() {
+            refreshDrones();
+            
+            // Simulate live updates
+            setInterval(() => {
+                document.getElementById('lastUpdate').innerText = 'just now';
+                
+                // Randomly move one drone slightly
+                if (drones.length > 0) {
+                    const randomDrone = drones[Math.floor(Math.random() * drones.length)];
+                    randomDrone.lat += (Math.random() - 0.5) * 0.0008;
+                    randomDrone.lon += (Math.random() - 0.5) * 0.0008;
+                    updateMapMarkers();
+                }
+            }, 8000);
+            
+            // Initial welcome
+            setTimeout(() => {
+                L.popup()
+                    .setLatLng([32.0853, 34.7818])
+                    .setContent(`
+                        <strong>Welcome, Operator.</strong><br>
+                        1. Select GREEN drone<br>
+                        2. Click map to set waypoint<br>
+                        3. Configure parameters<br>
+                        4. Execute Mission
+                    `)
+                    .openOn(map);
+            }, 1200);
+        }
+
+        init();
+    </script>
+</body>
+</html>

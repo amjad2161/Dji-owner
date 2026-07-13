@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skycore"
+version = "5.0.0"
+description = "Unified Drone Operations Platform - Legal DJI Toolkit"
+authors = [{name = "SkyCore Community"}]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1",
+    "pydantic>=2.0",
+    "fastapi>=0.110",
+    "pandas>=2.0",
+    "numpy>=1.24",
+]
+
+[project.scripts]
+skycore = "skycore.cli:cli"
+
+[tool.setuptools.packages.find]
+where = ["."]

@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkyCore GCS - Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --bg-primary: #0a1628;
+            --bg-secondary: #0f1f38;
+            --bg-tertiary: #162a47;
+            --accent: #00d4ff;
+            --accent-secondary: #0099cc;
+            --success: #00ff88;
+            --warning: #ffaa00;
+            --danger: #ff4444;
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --border: rgba(255, 255, 255, 0.1);
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        
+        /* Header */
+        .header {
+            height: 70px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+        }
+        
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+        }
+        
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--accent);
+            letter-spacing: 2px;
+        }
+        
+        .nav-menu {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .nav-item {
+            padding: 10px 20px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .nav-item:hover,
+        .nav-item.active {
+            background: rgba(0, 212, 255, 0.1);
+            color: var(--accent);
+        }
+        
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(0, 255, 136, 0.1);
+            border-radius: 20px;
+            font-size: 12px;
+            color: var(--success);
+        }
+        
+        .connection-status::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+        }
+        
+        /* Main Layout */
+        .main-container {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            height: calc(100vh - 70px);
+        }
+        
+        /* Map Area */
+        .map-container {
+            position: relative;
+            background: var(--bg-secondary);
+        }
+        
+        #map {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, #1a2a4a 0%, #0a1628 100%);
+        }
+        
+        .map-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .map-stat {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-size: 13px;
+        }
+        
+        .map-stat strong {
+            color: var(--accent);
+        }
+        
+        .map-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .map-btn {
+            width: 50px;
+            height: 50px;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .map-btn:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: var(--bg-primary);
+        }
+        
+        /* Right Panel */
+        .right-panel {
+            background: var(--bg-secondary);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        
+        .panel-section {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .section-title::before {
+            content: '';
+            width: 4px;
+            height: 16px;
+            background: var(--accent);
+            border-radius: 2px;
+        }
+        
+        /* Telemetry */
+        .telemetry-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+        
+        .telemetry-item {
+            background: var(--bg-tertiary);
+            padding: 15px;
+            border-radius: 10px;
+        }
+        
+        .telemetry-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 5px;
+        }
+        
+        .telemetry-value {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--accent);
+        }
+        
+        .telemetry-unit {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-left: 4px;
+        }
+        
+        /* Battery */
+        .battery-container {
+            margin-top: 15px;
+        }
+        
+        .battery-bar {
+            height: 30px;
+            background: var(--bg-tertiary);
+            border-radius: 5px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .battery-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--success) 0%, var(--accent) 100%);
+            transition: width 0.3s;
+        }
+        
+        .battery-text {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        /* Waypoints */
+        .waypoint-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .waypoint-item {
+            background: var(--bg-tertiary);
+            padding: 12px 15px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .waypoint-item:hover {
+            background: rgba(0, 212, 255, 0.1);
+        }
+        
+        .waypoint-icon {
+            width: 30px;
+            height: 30px;
+            background: var(--accent);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .waypoint-info {
+            flex: 1;
+        }
+        
+        .waypoint-name {
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .waypoint-coords {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        
+        /* Flight Mode */
+        .mode-selector {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        
+        .mode-btn {
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .mode-btn:hover,
+        .mode-btn.active {
+            background: rgba(0, 212, 255, 0.1);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+        
+        /* Action Buttons */
+        .action-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        
+        .action-btn {
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .action-btn.primary {
+            background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+            color: var(--bg-primary);
+        }
+        
+        .action-btn.danger {
+            background: linear-gradient(135deg, var(--danger), #cc0000);
+            color: white;
+        }
+        
+        .action-btn.secondary {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+        }
+        
+        .action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* Status Bar */
+        .status-bar {
+            margin-top: auto;
+            padding: 15px 20px;
+            background: var(--bg-tertiary);
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        
+        /* Drone Marker on Map */
+        .drone-marker {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            transform: translate(-50%, -50%);
+        }
+        
+        .drone-icon {
+            width: 100%;
+            height: 100%;
+            background: var(--accent);
+            border-radius: 50%;
+            border: 3px solid white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+        }
+        
+        .drone-direction {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-bottom: 15px solid var(--accent);
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-left">
+            <div class="logo">SKYCORE</div>
+            <nav class="nav-menu">
+                <a href="dashboard.html" class="nav-item active">Dashboard</a>
+                <a href="missions.html" class="nav-item">Missions</a>
+                <a href="threats.html" class="nav-item">Threats</a>
+                <a href="video.html" class="nav-item">Video</a>
+                <a href="telemetry.html" class="nav-item">Telemetry</a>
+                <a href="chat.html" class="nav-item">Commands</a>
+            </nav>
+        </div>
+        <div class="header-right">
+            <div class="connection-status">Connected to Drone</div>
+            <div class="user-info">
+                <div class="user-avatar" id="userAvatar">D</div>
+            </div>
+        </div>
+    </header>
+    
+    <div class="main-container">
+        <div class="map-container">
+            <div id="map">
+                <!-- Simulated Map with Drone -->
+                <div style="width: 100%; height: 100%; position: relative;">
+                    <!-- Grid overlay -->
+                    <svg style="position: absolute; width: 100%; height: 100%; opacity: 0.1;">
+                        <defs>
+                            <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
+                                <path d="M 50 0 L 0 0 0 50" fill="none" stroke="white" stroke-width="0.5"/>
+                            </pattern>
+                        </defs>
+                        <rect width="100%" height="100%" fill="url(#grid)" />
+                    </svg>
+                    
+                    <!-- Drone marker -->
+                    <div class="drone-marker" style="left: 45%; top: 50%;">
+                        <div class="drone-direction"></div>
+                        <div class="drone-icon">🚁</div>
+                    </div>
+                    
+                    <!-- Home marker -->
+                    <div style="position: absolute; left: 20%; top: 70%; transform: translate(-50%, -50%);">
+                        <div style="width: 20px; height: 20px; background: #00ff88; border-radius: 50%; border: 2px solid white;"></div>
+                        <div style="text-align: center; font-size: 10px; margin-top: 5px; color: #00ff88;">HOME</div>
+                    </div>
+                    
+                    <!-- Waypoint markers -->
+                    <div style="position: absolute; left: 70%; top: 30%;">
+                        <div style="width: 15px; height: 15px; background: #ffaa00; border-radius: 50%;"></div>
+                    </div>
+                    <div style="position: absolute; left: 55%; top: 25%;">
+                        <div style="width: 15px; height: 15px; background: #ffaa00; border-radius: 50%;"></div>
+                    </div>
+                    
+                    <!-- Flight path -->
+                    <svg style="position: absolute; width: 100%; height: 100%;">
+                        <path d="M 20% 70% Q 35% 40% 45% 50% T 55% 25% T 70% 30%" 
+                              fill="none" stroke="rgba(0, 212, 255, 0.5)" stroke-width="2" stroke-dasharray="5,5"/>
+                    </svg>
+                </div>
+            </div>
+            
+            <div class="map-overlay">
+                <div class="map-stat">
+                    <strong>HDOP:</strong> 1.2
+                </div>
+                <div class="map-stat">
+                    <strong>SATS:</strong> 16
+                </div>
+                <div class="map-stat">
+                    <strong>ALT:</strong> 52.3m
+                </div>
+            </div>
+            
+            <div class="map-controls">
+                <button class="map-btn" title="Center on drone">🎯</button>
+                <button class="map-btn" title="Zoom in">+</button>
+                <button class="map-btn" title="Zoom out">−</button>
+                <button class="map-btn" title="Toggle terrain">🗺️</button>
+            </div>
+        </div>
+        
+        <div class="right-panel">
+            <div class="panel-section">
+                <div class="section-title">Flight Telemetry</div>
+                <div class="telemetry-grid">
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">Latitude</div>
+                        <div class="telemetry-value">32.0853<span class="telemetry-unit">°</span></div>
+                    </div>
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">Longitude</div>
+                        <div class="telemetry-value">34.7818<span class="telemetry-unit">°</span></div>
+                    </div>
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">Altitude</div>
+                        <div class="telemetry-value">52.3<span class="telemetry-unit">m</span></div>
+                    </div>
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">Speed</div>
+                        <div class="telemetry-value">5.2<span class="telemetry-unit">m/s</span></div>
+                    </div>
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">Heading</div>
+                        <div class="telemetry-value">127<span class="telemetry-unit">°</span></div>
+                    </div>
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">Distance</div>
+                        <div class="telemetry-value">245<span class="telemetry-unit">m</span></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="panel-section">
+                <div class="section-title">Battery</div>
+                <div class="battery-container">
+                    <div class="battery-bar">
+                        <div class="battery-fill" style="width: 75%;"></div>
+                        <span class="battery-text">75%</span>
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 10px; font-size: 12px; color: var(--text-muted);">
+                    <span>Voltage: 12.4V</span>
+                    <span>Current: 2.5A</span>
+                    <span>Est: 18min</span>
+                </div>
+            </div>
+            
+            <div class="panel-section">
+                <div class="section-title">Flight Mode</div>
+                <div class="mode-selector">
+                    <button class="mode-btn">MANUAL</button>
+                    <button class="mode-btn">STABILIZE</button>
+                    <button class="mode-btn">ALT HOLD</button>
+                    <button class="mode-btn">LOITER</button>
+                    <button class="mode-btn active">AUTO</button>
+                    <button class="mode-btn">GUIDED</button>
+                </div>
+            </div>
+            
+            <div class="panel-section">
+                <div class="section-title">Mission Waypoints</div>
+                <div class="waypoint-list">
+                    <div class="waypoint-item">
+                        <div class="waypoint-icon">1</div>
+                        <div class="waypoint-info">
+                            <div class="waypoint-name">Home</div>
+                            <div class="waypoint-coords">32.0853, 34.7818</div>
+                        </div>
+                    </div>
+                    <div class="waypoint-item">
+                        <div class="waypoint-icon">2</div>
+                        <div class="waypoint-info">
+                            <div class="waypoint-name">Survey Point A</div>
+                            <div class="waypoint-coords">32.0865, 34.7835</div>
+                        </div>
+                    </div>
+                    <div class="waypoint-item">
+                        <div class="waypoint-icon">3</div>
+                        <div class="waypoint-info">
+                            <div class="waypoint-name">Survey Point B</div>
+                            <div class="waypoint-coords">32.0840, 34.7860</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="panel-section">
+                <div class="section-title">Quick Actions</div>
+                <div class="action-grid">
+                    <button class="action-btn primary">🚀 ARM</button>
+                    <button class="action-btn secondary">✈️ TAKEOFF</button>
+                    <button class="action-btn secondary">🏠 RTL</button>
+                    <button class="action-btn danger">🛑 LAND</button>
+                </div>
+            </div>
+            
+            <div class="status-bar">
+                <span>Uptime: 00:15:32</span>
+                <span>Signal: Excellent</span>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Check authentication
+        const user = sessionStorage.getItem('user');
+        if (!user) {
+            window.location.href = 'login.html';
+        }
+        
+        // Set user avatar
+        const userData = JSON.parse(user);
+        const initial = userData.username.charAt(0).toUpperCase();
+        document.getElementById('userAvatar').textContent = initial;
+        
+        // Simulate telemetry updates (would connect to real data in production)
+        console.log('SkyCore GCS initialized');
+    </script>
+</body>
+</html>
