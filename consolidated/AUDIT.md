@@ -53,8 +53,8 @@ No file implements RF jamming, Remote-ID spoofing/defeat, firmware rooting/patch
 
 The working subset, made genuinely runnable and wired together live:
 - `gcs-web/` — the React GCS, with its missing Vite build files added and a real browser-env bug fixed (`process.env` → `import.meta.env`). **Builds and runs.**
-- `backend/serve.py` — a clean, honest live-simulator server that drives evolving telemetry (battery drain, climb, waypoint motion) and accepts flight commands, in the exact shape the GCS expects. Every frame is tagged `source:"simulator"`.
-- Verified end-to-end: browser **Takeoff** → WebSocket command → simulator flies → live telemetry (FLYING, altitude climbing, battery draining) back in the GCS.
+- `backend/serve.py` — a clean, honest live server. A simulator drives ground truth (battery drain, climb, waypoint motion); noisy GPS is filtered by the **real 22-state `skycore/navigation/aukf.py`**, and the filter's estimate is streamed in the exact shape the GCS expects. Every frame is tagged `source:"simulator"` + `nav_backend`.
+- Verified end-to-end: browser **Takeoff** → WebSocket command → simulator flies → **real AUKF** filters it → live telemetry (FLYING, altitude climbing, battery draining) back in the GCS. A `goto` waypoint test tracked at ~9 m/s with ~0.4 m filter error, AUKF stable throughout.
 
 ## Suggested next steps
 
@@ -62,4 +62,4 @@ The working subset, made genuinely runnable and wired together live:
 2. Fix the canonical `api/main.py` to serve real evolving telemetry in the GCS shape (fold in `backend/serve.py`), and fix its fragile bare `core.` imports.
 3. Delete theater/fake modules listed above.
 4. Collapse the 145 docs to a handful of accurate ones; retire the inflated claims.
-5. Optionally wire the real AUKF + control + detection modules behind `serve.py` so the live demo runs on the genuine algorithms.
+5. The real AUKF is now wired behind `serve.py`. Next: drive the genuine **control** (PID/MPC/LQR) and **C-UAS detection** modules from the live loop too.

@@ -5,12 +5,15 @@ archive: a real Ground Control Station web app + a live simulator backend, wired
 together and verified end-to-end. For the honest inventory of the whole archive
 (what's real vs. marketing), see [`AUDIT.md`](./AUDIT.md).
 
-> **Honesty note.** The telemetry here comes from a **software simulator**, clearly
-> labeled `source: "simulator"` in every frame. It is real, evolving data (battery
-> drains, the aircraft climbs and flies to waypoints over real time) — but no
-> physical drone is connected, and nothing here claims otherwise. To fly real
-> hardware, point the GCS at a real SkyCore backend that speaks the same
-> `/ws/telemetry` contract.
+> **Honesty note.** A **software simulator** generates ground truth (battery drains,
+> the aircraft climbs and flies to waypoints over real time). Noisy GPS measurements
+> of that truth are filtered by the **real skycore 22-state Adaptive UKF**
+> (`src/skycore_v1.0.0/skycore/navigation/aukf.py`) — so the telemetry the GCS shows
+> is the genuine navigation filter's estimate, and every frame reports
+> `nav_backend: "skycore.navigation.aukf.AdaptiveUKF (22-state)"` and its live `nav_nis`.
+> No physical drone is connected, every frame is tagged `source: "simulator"`, and
+> nothing here claims otherwise. To fly real hardware, point the GCS at a backend that
+> speaks the same `/ws/telemetry` contract.
 
 ## Legal boundary
 
@@ -85,6 +88,11 @@ VITE_OPENROUTER_API_KEY=sk-or-...
   `serve.py`, which evolves state over real time and emits the exact shape the GCS's
   `TelemetryService` reads (`battery.percent`, `position.{lat,lon,altitude}`,
   `velocity.speed`, `attitude.yaw`, `mode`) and handles `arm/disarm/takeoff/land/rtl/goto`.
+- **Wired the real 22-state AUKF into the live loop** — `serve.py` imports the genuine
+  `skycore/navigation/aukf.py`, feeds it noisy GPS measurements in a local-ENU-metre frame
+  (the filter integrates `pos += vel·dt`, so lat/lon degrees would blow it up), and streams
+  the filter's estimate. Verified converging (~0.4 m tracking error) and stable in flight;
+  falls back to raw truth and says so if the filter ever goes non-finite.
 
 ## Known gaps / honest limitations
 
@@ -92,7 +100,6 @@ VITE_OPENROUTER_API_KEY=sk-or-...
   temporarily relaxed to get a green build; there are unused imports to clean up.
 - The map/video/threats pages render but are not yet fed by the backend — only the
   Dashboard/Telemetry pages consume the live WebSocket.
-- The genuine Python library (AUKF, control, detection) at
-  `../src/skycore_v1.0.0/skycore/` is **not** yet wired behind `serve.py`; the live demo
-  uses a self-contained physics-lite sim. Wiring the real algorithms in is the natural
-  next step (see `AUDIT.md`).
+- The real **AUKF navigation** is now wired in (above). The rest of the genuine library —
+  **control** (PID/MPC/LQR) and **C-UAS detection** at `../src/skycore_v1.0.0/skycore/` —
+  is not yet driven by the live loop; wiring those in is the natural next step (see `AUDIT.md`).
