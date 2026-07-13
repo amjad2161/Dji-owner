@@ -109,9 +109,14 @@ VITE_OPENROUTER_API_KEY=sk-or-...
 - The map/video/threats pages render but are not yet fed by the backend — only the
   Dashboard/Telemetry pages consume the live WebSocket.
 - Real **AUKF navigation**, **LQR control**, and **CUASClassifier detection** are wired into the
-  live loop, and **four GCS pages are real and backend-driven**: Dashboard, Threats (classifier
-  feed), Telemetry (live AUKF charts + backend provenance), and Missions (click-map → `goto` flies
-  the LQR). Remaining stubs: **Video** (the backend has no real camera feed — deliberately not faked)
-  and **AI Chat** (needs a `VITE_OPENROUTER_API_KEY`).
-- Minor papercut: `TelemetryService.sendCommand` silently drops a command if the WebSocket hasn't
-  finished opening — the very first button press right after a page load can no-op; press again.
+  live loop, and **all six GCS pages are real and backend-driven**:
+  - **Dashboard** — map + telemetry cards + threat count.
+  - **Threats** — the real classifier feed (`/ws/threats`).
+  - **Telemetry** — live SVG charts (altitude/speed/battery) + AUKF/LQR/detect provenance + NIS.
+  - **Missions** — SVG tactical map; click the map to `goto` (flies the real LQR); arm/takeoff/land/RTL.
+  - **AI Chat** — streams from OpenRouter when `VITE_OPENROUTER_API_KEY` is set; otherwise an honest
+    offline assistant that answers from live telemetry (`status`, `battery`, `threats`, …).
+  - **Video** — honest: **no fake camera**. Shows a clear "NO LIVE CAMERA FEED" banner + a live
+    telemetry **instrument HUD** (labeled NOT camera). Real feed needs DJI/PX4 RTSP hardware.
+- `TelemetryService.sendCommand` now **queues** commands until the WebSocket opens (the first press
+  after a page load is no longer dropped).

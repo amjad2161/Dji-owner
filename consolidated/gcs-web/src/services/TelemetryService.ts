@@ -22,6 +22,7 @@ export class TelemetryService {
     mode: 'DISARMED'
   };
   private navInfo = { navBackend: '', controlBackend: '', detectBackend: '', nis: 0, source: '' };
+  private pending: string[] = [];
 
   private constructor() {}
 
@@ -46,6 +47,9 @@ export class TelemetryService {
         console.log('Telemetry connected');
         this.reconnectAttempts = 0;
         this.currentState.connected = true;
+        // flush any commands queued before the socket opened
+        for (const msg of this.pending) this.ws?.send(msg);
+        this.pending = [];
         this.notifySubscribers();
       };
 
@@ -171,13 +175,16 @@ export class TelemetryService {
   }
 
   private async sendCommand(command: string, params?: Record<string, unknown>): Promise<boolean> {
+    const msg = JSON.stringify({ command, ...params });
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.error('Not connected');
-      return false;
+      // queue until the socket opens, so the first command after a page load isn't dropped
+      this.pending.push(msg);
+      if (!this.ws || this.ws.readyState === WebSocket.CLOSED) this.connect();
+      return true;
     }
 
     try {
-      this.ws.send(JSON.stringify({ command, ...params }));
+      this.ws.send(msg);
       return true;
     } catch (e) {
       console.error('Failed to send command:', e);
