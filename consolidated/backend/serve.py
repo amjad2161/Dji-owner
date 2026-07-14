@@ -47,11 +47,12 @@ _PKG_CANDIDATES = [
     os.path.join(_here, "..", "src", "skycore_v1.0.0", "skycore"),
     r"C:\Users\Mobar\OneDrive\Desktop\SkyCore_Consolidated\src\skycore_v1.0.0\skycore",
 ]
-AdaptiveUKF = LQRController = CUASClassifier = ThreatFeatures = GeofenceValidator = GeofenceConfig = RRTStarPlanner = None
-NAV_BACKEND = CTRL_BACKEND = DETECT_BACKEND = GEOFENCE_BACKEND = "unavailable"
+AdaptiveUKF = LQRController = CUASClassifier = ThreatFeatures = GeofenceValidator = GeofenceConfig = RRTStarPlanner = preflight_check = None
+NAV_BACKEND = CTRL_BACKEND = DETECT_BACKEND = GEOFENCE_BACKEND = WEATHER_BACKEND = "unavailable"
 if np is not None:
     for _pkg in _PKG_CANDIDATES:
         if _pkg and os.path.isdir(_pkg):
+            sys.path.insert(0, _pkg)                         # for root modules (openmeteo)
             for _sub in ("navigation", "control", "cuas"):
                 sys.path.insert(0, os.path.join(_pkg, _sub))
             try:
@@ -78,6 +79,11 @@ if np is not None:
                 from rrt import RRTStarPlanner  # type: ignore
             except Exception:
                 RRTStarPlanner = None
+            try:
+                from openmeteo import preflight_check  # type: ignore
+                WEATHER_BACKEND = "skycore.openmeteo (Open-Meteo, live)"
+            except Exception:
+                preflight_check = None
             break
 
 HOME_LAT, HOME_LON = 32.0853, 34.7818
@@ -94,6 +100,8 @@ MAX_V_SPEED = 4.0           # m/s vertical velocity envelope
 M_PER_DEG_LAT = 111_320.0
 M_PER_DEG_LON = M_PER_DEG_LAT * math.cos(math.radians(HOME_LAT))
 NOFLY_E, NOFLY_N, NOFLY_R = 150.0, 80.0, 60.0   # one circular no-fly zone, ENU metres
+_weather = {"backend": WEATHER_BACKEND, "ok": None, "issues": ["fetching…"],
+            "temp_c": None, "wind_kph": None, "gust_kph": None, "precip_mm_h": None, "clouds_pct": None}
 
 
 class SimState:
@@ -487,6 +495,24 @@ async def _start() -> None:
             await asyncio.sleep(1.0 / TICK_HZ)
     asyncio.create_task(loop())
 
+    async def weather_loop() -> None:
+        while True:
+            if preflight_check is not None:
+                try:
+                    ok, issues, snap = await asyncio.to_thread(preflight_check, HOME_LAT, HOME_LON)
+                    _weather.update({
+                        "backend": WEATHER_BACKEND, "ok": ok, "issues": issues,
+                        "temp_c": round(snap.temperature_c, 1), "wind_kph": round(snap.wind_speed_kph, 1),
+                        "gust_kph": round(snap.wind_gust_kph, 1), "precip_mm_h": round(snap.precipitation_mm_h, 2),
+                        "clouds_pct": round(snap.cloud_cover_pct),
+                    })
+                except Exception:
+                    _weather["issues"] = ["weather fetch failed"]
+            else:
+                _weather["backend"], _weather["issues"] = "unavailable", ["weather module not loaded"]
+            await asyncio.sleep(300)     # Open-Meteo refresh interval
+    asyncio.create_task(weather_loop())
+
 
 @app.get("/api/status")
 async def api_status() -> dict:
@@ -519,6 +545,11 @@ async def api_geofence() -> dict:
         "polygon_enu": pts,
         "center_latlon": {"lat": round(HOME_LAT + NOFLY_N / M_PER_DEG_LAT, 6),
                           "lon": round(HOME_LON + NOFLY_E / M_PER_DEG_LON, 6)}}]}
+
+
+@app.get("/api/weather")
+async def api_weather() -> dict:
+    return dict(_weather)
 
 
 @app.websocket("/ws/telemetry")

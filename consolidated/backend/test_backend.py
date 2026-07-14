@@ -135,6 +135,13 @@ def test_rrt_routes_around_nofly():
     assert min_clear > 0.0, f"aircraft entered the no-fly zone (clearance {min_clear:.1f} m)"
 
 
+def test_weather_module_loaded():
+    # the real Open-Meteo client imports; a live fetch is exercised by the server loop (needs network)
+    assert serve.WEATHER_BACKEND != "unavailable", serve.WEATHER_BACKEND
+    assert serve.preflight_check is not None
+    assert set(serve._weather) >= {"backend", "ok", "issues", "temp_c", "wind_kph"}
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     passed = 0

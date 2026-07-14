@@ -24,6 +24,7 @@ const Dashboard: React.FC = () => {
   const [zone, setZone] = useState<{ e: number; n: number; radius: number } | null>(null);
   const [route, setRoute] = useState<{ e: number; n: number }[]>([]);
   const [events, setEvents] = useState<Evt[]>([]);
+  const [weather, setWeather] = useState<{ ok?: boolean; temp_c?: number; wind_kph?: number; gust_kph?: number } | null>(null);
   const prev = useRef({ mode: '', crit: -1, reason: '' });
 
   useEffect(() => {
@@ -34,6 +35,9 @@ const Dashboard: React.FC = () => {
       .then((r) => r.json())
       .then((d) => { if (d.enabled && d.zones?.[0]) { const z = d.zones[0]; setZone({ e: z.center.e, n: z.center.n, radius: z.radius }); } })
       .catch(() => {});
+    const fetchWeather = () => fetch(`http://${window.location.hostname}:8080/api/weather`).then((r) => r.json()).then(setWeather).catch(() => {});
+    fetchWeather();
+    const wid = setInterval(fetchWeather, 60000);
 
     const push = (text: string, color: string) =>
       setEvents((prevE) => [{ t: new Date().toLocaleTimeString(), text, color }, ...prevE].slice(0, 8));
@@ -53,7 +57,7 @@ const Dashboard: React.FC = () => {
       if (reason && reason !== prev.current.reason) { push(reason, '#FF6B6B'); prev.current.reason = reason; }
     }, 1000);
 
-    return () => { unsub(); clearInterval(id); };
+    return () => { unsub(); clearInterval(id); clearInterval(wid); };
   }, []);
 
   const dEnu = { e: (drone.position.lon - HOME_LON) * M_PER_DEG_LON, n: (drone.position.lat - HOME_LAT) * M_PER_DEG_LAT };
@@ -156,6 +160,18 @@ const Dashboard: React.FC = () => {
               <span className="card-label">איומים</span>
               <span className="card-value">{stats.total}</span>
               {stats.critical > 0 && <span className="threat-critical">{stats.critical} קריטיים</span>}
+            </div>
+          </div>
+          <div className="telemetry-card weather">
+            <div className="card-icon">🌦️</div>
+            <div className="card-content">
+              <span className="card-label">מזג אוויר (חי)</span>
+              <span className="card-value">{weather?.wind_kph != null ? `${weather.wind_kph} kph` : '…'}</span>
+              {weather?.temp_c != null && (
+                <span style={{ fontSize: 12 }}>
+                  {weather.temp_c}°C · {weather.ok ? <span style={{ color: '#00E5A0' }}>בטוח לטוס</span> : <span style={{ color: '#FF9F1C' }}>זהירות</span>}
+                </span>
+              )}
             </div>
           </div>
         </div>

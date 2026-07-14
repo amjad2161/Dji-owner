@@ -22,6 +22,10 @@ together and verified end-to-end. For the honest inventory of the whole archive
 >   would cross the no-fly zone **around** it (waypoints fed to the LQR; drawn as a dashed path on the
 >   Missions map) instead of tripping RTL. Verified: the aircraft rounds the zone with >40 m clearance.
 >
+> Plus **live weather** (genuinely external, not simulated): the real `openmeteo.py` client pulls the
+> **actual** current conditions at the home coordinates from the free Open-Meteo API for a pre-flight
+> safe-to-fly verdict, cached and shown on the Dashboard (`GET /api/weather`).
+>
 > No physical drone and no real RF sensing are connected; every frame is tagged
 > `source: "simulator"` and reports which real backend is active. Detection/alerting only —
 > no jamming or countermeasure capability. To fly real hardware, point the GCS at a backend
@@ -95,7 +99,7 @@ cd consolidated/backend
 venv\Scripts\python test_backend.py     # standalone; or: venv\Scripts\python -m pytest
 ```
 
-Expected: `9/9 passed` (nav / control / detection / geofence / planning + shape checks).
+Expected: `10/10 passed` (nav / control / detection / geofence / planning / weather + shape checks).
 
 ## Docker (one container)
 
