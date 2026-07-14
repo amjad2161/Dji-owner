@@ -64,3 +64,13 @@ The working subset, made genuinely runnable and wired together live:
 3. Delete theater/fake modules listed above.
 4. Collapse the 145 docs to a handful of accurate ones; retire the inflated claims.
 5. Real AUKF navigation, LQR control, and CUASClassifier detection are now wired behind `serve.py`. Next: flesh out the remaining GCS stub pages (Missions/Video/Telemetry/AI Chat) against the backend.
+
+## Cleanup (seal)
+
+At the `v1.0-singularity` seal, **205 misleading / duplicated / sensitive files were removed** from the archive (git history retains them, so nothing is truly lost):
+
+- `chats/` — 3 transcripts containing prompts requesting illegal capabilities.
+- `docs/` — 145 inflated, mutually-inconsistent marketing docs, plus the marketing `.md` scattered in `src/` (`FINAL_*`, `GOD_MODE`, `SINGULARITY*`, `MILITARY_*`, `CERTIFICATION*`, `ULTIMATE_*`, `PROPOSAL_*`, `STATUS`, `INVENTORY_HEBREW`, …).
+- **Fake / theater / fake-crypto modules** across all three snapshots: `counter_swarm.py`, `cognitive_ew.py`, `mitigation.py` (print/empty theater), `encrypted.py` (fake "AES" — hash + plaintext), `quantum_crypto.py` + `quantum_resistant_full.py` (fake "CRYSTALS-Kyber/Dilithium"), `rf_audio_detector.py` (simulated stub).
+
+**Kept:** the real detection code (`classifier.py`, `spoofing.py`, `electronic_warfare_detection.py`), the canonical `skycore_v1.0.0/skycore/` package, `reference/sky.py`, `archives/`, and the entire `consolidated/` runnable system — which was untouched by the cleanup and still passes 7/7 backend tests.
