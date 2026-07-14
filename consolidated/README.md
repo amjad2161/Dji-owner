@@ -103,7 +103,16 @@ cd consolidated/backend
 venv\Scripts\python test_backend.py     # standalone; or: venv\Scripts\python -m pytest
 ```
 
-Expected: `11/11 passed` (nav / control / detection / geofence / planning / weather / flight-history + shape checks).
+Expected: `14/14 passed` (nav / control / detection / geofence / planning / weather / flight-history
++ the async RRT* offload path, no-route rejection, AUKF NIS consistency, and shape checks).
+
+The **frontend** has unit tests + a strict typecheck:
+
+```powershell
+cd consolidated/gcs-web
+npm run typecheck     # tsc --noEmit (strict noUnusedLocals/Params)
+npm run test          # vitest (geo + auth-token helpers)
+```
 
 There's also an **end-to-end smoke test** that drives one full mission against a running server
 (arm → takeoff → goto across the no-fly zone → RRT* route around → land) and checks every subsystem
@@ -114,6 +123,9 @@ together (backends, live weather, classified threats, route/clearance, flight lo
 cd consolidated/backend
 venv\Scripts\python smoke_test.py     # exits 0 on PASS  (needs: pip install websockets)
 ```
+
+All of this runs in **CI** on every push/PR (`.github/workflows/ci.yml`): backend pytest,
+frontend typecheck + vitest + build, and a best-effort end-to-end smoke.
 
 ## Docker (one container)
 
@@ -175,8 +187,6 @@ OPENROUTER_API_KEY=sk-or-...
 
 ## Known gaps / honest limitations
 
-- `gcs-web` had strict unused-import checks (`noUnusedLocals`/`noUnusedParameters`)
-  temporarily relaxed to get a green build; there are unused imports to clean up.
 - Real **AUKF navigation**, **LQR control**, and **CUASClassifier detection** are wired into the
   live loop, and **all six GCS pages are real and backend-driven**:
   - **Dashboard** — a live tactical map (own drone from the AUKF estimate, the classified threats

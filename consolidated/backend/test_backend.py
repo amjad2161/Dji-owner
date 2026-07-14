@@ -162,6 +162,57 @@ def test_weather_module_loaded():
     assert set(serve._weather) >= {"backend", "ok", "issues", "temp_c", "wind_kph"}
 
 
+def test_goto_plan_inline_false_defers_then_applies():
+    """The WS receiver path: a crossing goto with plan_inline=False must DEFER the RRT*
+    solve (not block the event loop), then _solve_route + apply_route set the route."""
+    import random
+    random.seed(20240714)
+    s = serve.SimState()
+    if s.rrt is None:
+        return
+    s.command("takeoff", {"altitude": 40})
+    _steps(s, 60)
+    far_lat = HOME_LAT + 160.0 / M_PER_DEG_LAT
+    far_lon = HOME_LON + 300.0 / serve.M_PER_DEG_LON     # straight path crosses the no-fly zone
+    s.command("goto", {"lat": far_lat, "lon": far_lon, "altitude": 40}, plan_inline=False)
+    assert s._pending_route is not None, "expected a deferred route request"
+    assert not s.route, "route must not be set before the deferred solve runs"
+    e0, n0, u0, te, tn, alt = s._pending_route
+    path = s._solve_route((e0, n0, u0), te, tn, alt)     # what asyncio.to_thread runs
+    s.apply_route(path, te, tn, alt)
+    assert s.route, "route should be set after apply_route"
+    assert s._pending_route is None
+
+
+def test_apply_route_rejects_when_no_path():
+    """When RRT* finds no route around the zone, the goto is REJECTED (not flown straight
+    through the zone) — apply_route(None) must set a geofence reason and no route."""
+    s = serve.SimState()
+    if s.rrt is None:
+        return
+    s.command("takeoff", {"altitude": 40})
+    _steps(s, 60)
+    s.apply_route(None, 100.0, 100.0, 40.0)
+    assert "no clear route" in s.geofence_reason, s.geofence_reason
+    assert not s.route
+
+
+def test_aukf_nis_is_statistically_consistent():
+    """NIS should average near dim_z (6). The old double-counted-Q bug over-inflated the
+    covariance and deflated NIS to ~3; the fix restores consistency."""
+    s = serve.SimState()
+    if s.filter is None:
+        return
+    s.command("takeoff", {"altitude": 40})
+    _steps(s, 60)
+    vals = []
+    for _ in range(400):
+        s._filter_step(0.1)                  # realistic 10 Hz cadence so Q contributes as in production
+        vals.append(s.nis)
+    mean = sum(vals) / len(vals)
+    assert 4.0 < mean < 13.0, f"AUKF NIS mean {mean:.2f} outside the dim_z=6 consistency band"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     passed = 0
