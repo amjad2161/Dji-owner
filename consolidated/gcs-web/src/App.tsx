@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, NavLink } from 'react-router-dom';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Missions from './pages/Missions';
@@ -86,12 +86,12 @@ const App: React.FC = () => {
         <nav className="sidebar">
           <div className="logo">SkyCore</div>
           <div className="nav-links">
-            <a href="/" className="nav-link">Dashboard</a>
-            <a href="/missions" className="nav-link">Missions</a>
-            <a href="/threats" className="nav-link">Threats</a>
-            <a href="/video" className="nav-link">Video</a>
-            <a href="/chat" className="nav-link">AI Chat</a>
-            <a href="/telemetry" className="nav-link">Telemetry</a>
+            <NavLink to="/" end className="nav-link">Dashboard</NavLink>
+            <NavLink to="/missions" className="nav-link">Missions</NavLink>
+            <NavLink to="/threats" className="nav-link">Threats</NavLink>
+            <NavLink to="/video" className="nav-link">Video</NavLink>
+            <NavLink to="/chat" className="nav-link">AI Chat</NavLink>
+            <NavLink to="/telemetry" className="nav-link">Telemetry</NavLink>
           </div>
           <div className="user-info">
             <span>{user?.username}</span>

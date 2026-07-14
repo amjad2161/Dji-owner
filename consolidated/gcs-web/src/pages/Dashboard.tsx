@@ -7,11 +7,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { TelemetryService } from '../services/TelemetryService';
 import { AdsBService } from '../services/AdsBService';
 import { apiGet } from '../services/auth';
+import { HOME_LAT, HOME_LON, M_PER_DEG_LAT, M_PER_DEG_LON } from '../services/geo';
 import { DroneState, Threat } from '../App';
 
-const HOME_LAT = 32.0853, HOME_LON = 34.7818;
-const M_PER_DEG_LAT = 111320;
-const M_PER_DEG_LON = 111320 * Math.cos((HOME_LAT * Math.PI) / 180);
 const W = 560, H = 440, CX = W / 2, CY = H / 2, SCALE = 1.3; // metres per pixel
 const enuToPx = (e: number, n: number) => ({ x: CX + e / SCALE, y: CY - n / SCALE });
 const SEV_COLOR: Record<string, string> = { critical: '#FF2A2A', high: '#FF9F1C', medium: '#FFD166', low: '#00E5A0' };
@@ -125,6 +123,7 @@ const Dashboard: React.FC = () => {
             <button onClick={() => TelemetryService.getInstance().takeoff(40)}>Takeoff</button>
             <button onClick={() => TelemetryService.getInstance().land()}>Land</button>
             <button onClick={() => TelemetryService.getInstance().rtl()}>RTH</button>
+            <button onClick={() => TelemetryService.getInstance().disarm()}>Disarm</button>
           </div>
         </div>
 

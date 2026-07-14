@@ -177,8 +177,6 @@ OPENROUTER_API_KEY=sk-or-...
 
 - `gcs-web` had strict unused-import checks (`noUnusedLocals`/`noUnusedParameters`)
   temporarily relaxed to get a green build; there are unused imports to clean up.
-- The map/video/threats pages render but are not yet fed by the backend — only the
-  Dashboard/Telemetry pages consume the live WebSocket.
 - Real **AUKF navigation**, **LQR control**, and **CUASClassifier detection** are wired into the
   live loop, and **all six GCS pages are real and backend-driven**:
   - **Dashboard** — a live tactical map (own drone from the AUKF estimate, the classified threats
@@ -187,8 +185,9 @@ OPENROUTER_API_KEY=sk-or-...
   - **Threats** — the real classifier feed (`/ws/threats`).
   - **Telemetry** — live SVG charts (altitude/speed/battery) + AUKF/LQR/detect provenance + NIS.
   - **Missions** — SVG tactical map; click the map to `goto` (flies the real LQR); arm/takeoff/land/RTL.
-  - **AI Chat** — streams from OpenRouter when `VITE_OPENROUTER_API_KEY` is set; otherwise an honest
-    offline assistant that answers from live telemetry (`status`, `battery`, `threats`, …).
+  - **AI Chat** — proxies through the backend (`POST /api/chat`) to OpenRouter when the server has
+    `OPENROUTER_API_KEY` (key stays server-side); otherwise an honest offline assistant that answers
+    from live telemetry (`status`, `battery`, `threats`, …).
   - **Video** — honest: **no fake camera**. Shows a clear "NO LIVE CAMERA FEED" banner + a live
     telemetry **instrument HUD** (labeled NOT camera). Real feed needs DJI/PX4 RTSP hardware.
 - `TelemetryService.sendCommand` now **queues** commands until the WebSocket opens (the first press
