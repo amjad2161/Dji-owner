@@ -26,6 +26,10 @@ together and verified end-to-end. For the honest inventory of the whole archive
 > **actual** current conditions at the home coordinates from the free Open-Meteo API for a pre-flight
 > safe-to-fly verdict, cached and shown on the Dashboard (`GET /api/weather`).
 >
+> Plus **flight history**: each flight (takeoff→land) is logged to a real **SQLite** store
+> (`storage/flight_db.py`) with duration / max-altitude / distance / battery-used; recent flights
+> appear on the Missions page (`GET /api/flights`).
+>
 > No physical drone and no real RF sensing are connected; every frame is tagged
 > `source: "simulator"` and reports which real backend is active. Detection/alerting only —
 > no jamming or countermeasure capability. To fly real hardware, point the GCS at a backend
@@ -99,7 +103,7 @@ cd consolidated/backend
 venv\Scripts\python test_backend.py     # standalone; or: venv\Scripts\python -m pytest
 ```
 
-Expected: `10/10 passed` (nav / control / detection / geofence / planning / weather + shape checks).
+Expected: `11/11 passed` (nav / control / detection / geofence / planning / weather / flight-history + shape checks).
 
 ## Docker (one container)
 

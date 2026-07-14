@@ -25,6 +25,7 @@ const Missions: React.FC = () => {
   const [zone, setZone] = useState<{ e: number; n: number; radius: number } | null>(null);
   const [gfReason, setGfReason] = useState('');
   const [route, setRoute] = useState<{ e: number; n: number }[]>([]);
+  const [flights, setFlights] = useState<Array<{ start_time: string; end_time: string; max_alt: number; distance_km: number; battery_used: number }>>([]);
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -38,7 +39,10 @@ const Missions: React.FC = () => {
       .then((r) => r.json())
       .then((d) => { if (d.enabled && d.zones?.[0]) { const z = d.zones[0]; setZone({ e: z.center.e, n: z.center.n, radius: z.radius }); } })
       .catch(() => {});
-    return () => clearInterval(id);
+    const fetchFlights = () => fetch(`http://${window.location.hostname}:8080/api/flights`).then((r) => r.json()).then((d) => setFlights(d.flights || [])).catch(() => {});
+    fetchFlights();
+    const fid = setInterval(fetchFlights, 8000);
+    return () => { clearInterval(id); clearInterval(fid); };
   }, []);
 
   const svc = TelemetryService.getInstance();
@@ -135,6 +139,18 @@ const Missions: React.FC = () => {
               <div style={{ color: '#FFD166' }}>{target.lat.toFixed(6)}, {target.lon.toFixed(6)} @ {target.alt} m</div>
             </div>
           )}
+          <div style={{ background: '#111', border: '1px solid #1e2a24', borderRadius: 8, padding: 14, fontSize: 12 }}>
+            <div style={{ color: '#7d8a84', letterSpacing: 1, marginBottom: 6 }}>RECENT FLIGHTS (SQLite)</div>
+            {flights.length === 0 && <div style={{ color: '#7d8a84' }}>no flights logged yet</div>}
+            {flights.slice(0, 5).map((f, i) => {
+              const dur = Math.max(0, Math.round((new Date(f.end_time).getTime() - new Date(f.start_time).getTime()) / 1000));
+              return (
+                <div key={i} style={{ borderBottom: '1px solid #161f1b', padding: '4px 0', color: '#c7d3cd' }}>
+                  <span style={{ color: '#00E5A0' }}>{dur}s</span> · {f.max_alt} m · {f.distance_km} km · −{f.battery_used}%
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

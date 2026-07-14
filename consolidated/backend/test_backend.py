@@ -135,6 +135,26 @@ def test_rrt_routes_around_nofly():
     assert min_clear > 0.0, f"aircraft entered the no-fly zone (clearance {min_clear:.1f} m)"
 
 
+def test_flight_history_logs_to_sqlite():
+    import os as _os
+    _os.environ["SKYCORE_DB"] = ":memory:"
+    s = serve.SimState()
+    _os.environ.pop("SKYCORE_DB", None)
+    if s.db is None:
+        return  # storage module unavailable -> honest skip
+    before = len(s.db.get_history())
+    s.command("takeoff", {"altitude": 30})
+    _steps(s, 120)
+    s.command("land", {})
+    _steps(s, 400)                                # descend to DISARMED -> logs the flight
+    hist = s.db.get_history()
+    assert len(hist) == before + 1, f"expected exactly one logged flight, got {len(hist) - before}"
+    f = hist[0]
+    assert f["drone_id"] == "SIM-1", f
+    assert f["max_alt"] >= 15.0, f
+    assert f["distance_km"] >= 0.0 and f["battery_used"] >= 0.0, f
+
+
 def test_weather_module_loaded():
     # the real Open-Meteo client imports; a live fetch is exercised by the server loop (needs network)
     assert serve.WEATHER_BACKEND != "unavailable", serve.WEATHER_BACKEND

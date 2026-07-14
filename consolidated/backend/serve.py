@@ -28,6 +28,7 @@ import os
 import random
 import sys
 import time
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,13 +48,13 @@ _PKG_CANDIDATES = [
     os.path.join(_here, "..", "src", "skycore_v1.0.0", "skycore"),
     r"C:\Users\Mobar\OneDrive\Desktop\SkyCore_Consolidated\src\skycore_v1.0.0\skycore",
 ]
-AdaptiveUKF = LQRController = CUASClassifier = ThreatFeatures = GeofenceValidator = GeofenceConfig = RRTStarPlanner = preflight_check = None
+AdaptiveUKF = LQRController = CUASClassifier = ThreatFeatures = GeofenceValidator = GeofenceConfig = RRTStarPlanner = preflight_check = FlightDatabase = None
 NAV_BACKEND = CTRL_BACKEND = DETECT_BACKEND = GEOFENCE_BACKEND = WEATHER_BACKEND = "unavailable"
 if np is not None:
     for _pkg in _PKG_CANDIDATES:
         if _pkg and os.path.isdir(_pkg):
             sys.path.insert(0, _pkg)                         # for root modules (openmeteo)
-            for _sub in ("navigation", "control", "cuas"):
+            for _sub in ("navigation", "control", "cuas", "storage"):
                 sys.path.insert(0, os.path.join(_pkg, _sub))
             try:
                 from aukf import AdaptiveUKF  # type: ignore
@@ -84,6 +85,10 @@ if np is not None:
                 WEATHER_BACKEND = "skycore.openmeteo (Open-Meteo, live)"
             except Exception:
                 preflight_check = None
+            try:
+                from flight_db import FlightDatabase  # type: ignore
+            except Exception:
+                FlightDatabase = None
             break
 
 HOME_LAT, HOME_LON = 32.0853, 34.7818
@@ -196,6 +201,16 @@ class SimState:
             except Exception:
                 self.rrt = None
 
+        # flight history (real SQLite)
+        self.db = None
+        self._fl_active = False
+        self._fl = {"start": "", "max_alt": 0.0, "dist_m": 0.0, "batt0": 100.0}
+        if FlightDatabase is not None:
+            try:
+                self.db = FlightDatabase(os.environ.get("SKYCORE_DB", os.path.join(_here, "flights.db")))
+            except Exception:
+                self.db = None
+
     @staticmethod
     def _seg_crosses_zone(e0: float, n0: float, e1: float, n1: float) -> bool:
         dx, dy = e1 - e0, n1 - n0
@@ -290,6 +305,7 @@ class SimState:
 
         self._detect_step()
         self._geofence_step()
+        self._flight_step()
         self._filter_step(dt)
 
     def _lqr_step(self) -> None:
@@ -430,6 +446,30 @@ class SimState:
             self.wp_queue, self.route = [], []
             self.mode = "RTL"
 
+    def _flight_step(self) -> None:
+        """Log each flight (takeoff -> land) to the real SQLite store."""
+        if self.db is None:
+            return
+        flying = self.armed and (self.u > 0.5 or self.mode in ("TAKEOFF", "FLYING", "RTL", "LANDING"))
+        if flying and not self._fl_active:
+            self._fl_active = True
+            self._fl = {"start": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                        "max_alt": self.u, "dist_m": 0.0, "batt0": self.battery}
+        elif self._fl_active:
+            self._fl["max_alt"] = max(self._fl["max_alt"], self.u)
+            self._fl["dist_m"] += math.hypot(self.ve, self.vn) * FDT
+            if self.mode == "DISARMED":
+                try:
+                    self.db.log_flight(
+                        "SIM-1", self._fl["start"],
+                        datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                        round(self._fl["max_alt"], 1), round(self._fl["dist_m"] / 1000.0, 3),
+                        round(self._fl["batt0"] - self.battery, 1),
+                    )
+                except Exception:
+                    pass
+                self._fl_active = False
+
     def _filter_step(self, dt: float) -> None:
         if self.filter is None or np is None:
             return
@@ -550,6 +590,13 @@ async def api_geofence() -> dict:
 @app.get("/api/weather")
 async def api_weather() -> dict:
     return dict(_weather)
+
+
+@app.get("/api/flights")
+async def api_flights() -> dict:
+    if state.db is None:
+        return {"available": False, "flights": []}
+    return {"available": True, "flights": state.db.get_history(limit=20)}
 
 
 @app.websocket("/ws/telemetry")
