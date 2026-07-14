@@ -27,17 +27,24 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import math
 import os
 import random
 import sys
 import threading
 import time
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+logging.basicConfig(level=os.environ.get("SKYCORE_LOG_LEVEL", "INFO"),
+                    format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("skycore")
 
 try:
     import numpy as np
@@ -112,7 +119,8 @@ M_PER_DEG_LAT = 111_320.0
 M_PER_DEG_LON = M_PER_DEG_LAT * math.cos(math.radians(HOME_LAT))
 NOFLY_E, NOFLY_N, NOFLY_R = 150.0, 80.0, 60.0   # one circular no-fly zone, ENU metres
 _weather = {"backend": WEATHER_BACKEND, "ok": None, "issues": ["fetching…"],
-            "temp_c": None, "wind_kph": None, "gust_kph": None, "precip_mm_h": None, "clouds_pct": None}
+            "temp_c": None, "wind_kph": None, "gust_kph": None, "precip_mm_h": None,
+            "clouds_pct": None, "fetched_at": None}
 
 
 # ----------------------------------------------------------------------------
@@ -265,6 +273,7 @@ class SimState:
                 self.gf, self.geofence_backend = None, "none (geofence init failed)"
 
         # real path planner (RRT*) — route around the no-fly zone
+        self.last_tick_mono = time.monotonic()   # updated each sim tick; /api/readyz reads its age
         self.rrt = None
         self._rrt_lock = threading.Lock()   # serialize solves: plan() mutates shared planner state
         self.route_backend = "none"
@@ -577,8 +586,8 @@ class SimState:
                         round(self._fl["max_alt"], 1), round(self._fl["dist_m"] / 1000.0, 3),
                         round(self._fl["batt0"] - self.battery, 1),
                     )
-                except Exception:
-                    pass
+                except Exception as ex:
+                    log.warning("flight-log write failed (flight dropped): %s", ex)
                 self._fl_active = False
 
     def _filter_step(self, dt: float) -> None:
@@ -634,7 +643,56 @@ class SimState:
 
 
 state = SimState()
-app = FastAPI(title="SkyCore Live Backend (real AUKF + LQR + C-UAS)", version="3.0")
+
+
+async def _sim_loop() -> None:
+    while True:
+        try:
+            state.step()
+            state.last_tick_mono = time.monotonic()
+        except Exception as ex:                 # never let one bad tick freeze telemetry silently
+            log.exception("sim step failed: %s", ex)
+        await asyncio.sleep(1.0 / TICK_HZ)
+
+
+async def _weather_loop() -> None:
+    while True:
+        delay = 300                             # Open-Meteo refresh interval
+        if preflight_check is not None:
+            try:
+                ok, issues, snap = await asyncio.to_thread(preflight_check, HOME_LAT, HOME_LON)
+                _weather.update({
+                    "backend": WEATHER_BACKEND, "ok": ok, "issues": issues,
+                    "temp_c": round(snap.temperature_c, 1), "wind_kph": round(snap.wind_speed_kph, 1),
+                    "gust_kph": round(snap.wind_gust_kph, 1), "precip_mm_h": round(snap.precipitation_mm_h, 2),
+                    "clouds_pct": round(snap.cloud_cover_pct), "fetched_at": time.monotonic(),
+                })
+            except Exception as ex:
+                log.warning("weather fetch failed: %s", ex)
+                _weather["issues"] = ["weather fetch failed"]
+                delay = 30                       # retry sooner instead of holding stale data for 5 min
+        else:
+            _weather["backend"], _weather["issues"] = "unavailable", ["weather module not loaded"]
+        await asyncio.sleep(delay)
+
+
+@asynccontextmanager
+async def _lifespan(_app: "FastAPI"):
+    tasks = [asyncio.create_task(_sim_loop()), asyncio.create_task(_weather_loop())]
+    log.info("SkyCore backend %s:%s | auth=%s | nav=%s | ctrl=%s | detect=%s",
+             HOST, PORT, "on" if AUTH_ENABLED else "OFF",
+             state.nav_backend, state.control_backend, state.detect_backend)
+    try:
+        yield
+    finally:                                    # graceful shutdown: cancel tasks + close the DB
+        for t in tasks:
+            t.cancel()
+        if state.db is not None:
+            state.db.close()
+        log.info("SkyCore backend shut down (tasks cancelled, DB closed)")
+
+
+app = FastAPI(title="SkyCore Live Backend (real AUKF + LQR + C-UAS)", version="3.0", lifespan=_lifespan)
 # Explicit origin allowlist (not "*"): same-origin under the unified server needs no
 # CORS; this covers the dev cross-origin case (GCS :4173 -> backend :8080).
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS,
@@ -703,31 +761,17 @@ async def api_chat(req: dict) -> dict:
         return {"ok": False, "reply": None, "reason": f"chat proxy error: {ex}"}
 
 
-@app.on_event("startup")
-async def _start() -> None:
-    async def loop() -> None:
-        while True:
-            state.step()
-            await asyncio.sleep(1.0 / TICK_HZ)
-    asyncio.create_task(loop())
-
-    async def weather_loop() -> None:
-        while True:
-            if preflight_check is not None:
-                try:
-                    ok, issues, snap = await asyncio.to_thread(preflight_check, HOME_LAT, HOME_LON)
-                    _weather.update({
-                        "backend": WEATHER_BACKEND, "ok": ok, "issues": issues,
-                        "temp_c": round(snap.temperature_c, 1), "wind_kph": round(snap.wind_speed_kph, 1),
-                        "gust_kph": round(snap.wind_gust_kph, 1), "precip_mm_h": round(snap.precipitation_mm_h, 2),
-                        "clouds_pct": round(snap.cloud_cover_pct),
-                    })
-                except Exception:
-                    _weather["issues"] = ["weather fetch failed"]
-            else:
-                _weather["backend"], _weather["issues"] = "unavailable", ["weather module not loaded"]
-            await asyncio.sleep(300)     # Open-Meteo refresh interval
-    asyncio.create_task(weather_loop())
+@app.get("/api/readyz")
+async def api_readyz() -> JSONResponse:
+    """Public readiness probe: reports 503 if the sim loop has stalled (a hung tick
+    would otherwise leave /api/healthz + /api/status reporting 'running' forever)."""
+    age = time.monotonic() - getattr(state, "last_tick_mono", 0.0)
+    ready = age < 2.0
+    return JSONResponse(
+        {"ready": ready, "last_tick_age_s": round(age, 2),
+         "db": state.db is not None, "nav": state.nav_backend},
+        status_code=200 if ready else 503,
+    )
 
 
 @app.get("/api/status", dependencies=[Depends(require_auth)])
@@ -765,7 +809,14 @@ async def api_geofence() -> dict:
 
 @app.get("/api/weather", dependencies=[Depends(require_auth)])
 async def api_weather() -> dict:
-    return dict(_weather)
+    w = dict(_weather)
+    fetched = w.pop("fetched_at", None)
+    if fetched is not None:
+        age = time.monotonic() - fetched
+        w["age_s"] = round(age, 1)
+        if age > 1800:          # don't present >30-min-old data as a current go/no-go verdict
+            w["ok"], w["issues"] = None, list(w.get("issues", [])) + ["weather data stale"]
+    return w
 
 
 @app.get("/api/flights", dependencies=[Depends(require_auth)])
@@ -796,9 +847,9 @@ async def ws_telemetry(ws: WebSocket) -> None:
                             e0, n0, u0, te, tn, alt = pending
                             path = await asyncio.to_thread(state._solve_route, (e0, n0, u0), te, tn, alt)
                             state.apply_route(path, te, tn, alt)
-                        print(f"[cmd] {cmd} -> mode={state.mode}", flush=True)
+                        log.info("cmd %s -> mode=%s", cmd, state.mode)
                     except Exception as ex:                      # one bad command must not kill the loop
-                        print(f"[cmd-error] {cmd}: {ex}", flush=True)
+                        log.warning("cmd %s failed: %s", cmd, ex)
                         continue
         except Exception:
             return
@@ -863,9 +914,7 @@ else:
 
 if __name__ == "__main__":
     import uvicorn
-    print(f"SkyCore live backend {HOST}:{PORT} | auth={'on' if AUTH_ENABLED else 'OFF'} | "
-          f"nav={state.nav_backend} | ctrl={state.control_backend} | detect={state.detect_backend}", flush=True)
     if HOST not in ("127.0.0.1", "localhost") and not os.environ.get("SKYCORE_JWT_SECRET"):
-        print("WARNING: exposed on a non-loopback host with an ephemeral JWT secret; "
-              "set SKYCORE_JWT_SECRET (and real SKYCORE_USERS) for a stable deployment.", flush=True)
+        log.warning("exposed on a non-loopback host with an ephemeral JWT secret; "
+                    "set SKYCORE_JWT_SECRET (and real SKYCORE_USERS) for a stable deployment.")
     uvicorn.run(app, host=HOST, port=PORT, log_level="warning")
