@@ -22,11 +22,20 @@ const Missions: React.FC = () => {
   const [state, setState] = useState<DroneState>(TelemetryService.getInstance().getCurrentState());
   const [target, setTarget] = useState<{ lat: number; lon: number; alt: number } | null>(null);
   const [alt, setAlt] = useState(40);
+  const [zone, setZone] = useState<{ e: number; n: number; radius: number } | null>(null);
+  const [gfReason, setGfReason] = useState('');
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
     const svc = TelemetryService.getInstance();
-    const id = setInterval(() => setState(svc.getCurrentState()), 300);
+    const id = setInterval(() => {
+      setState(svc.getCurrentState());
+      setGfReason(svc.getNavInfo().geofenceReason);
+    }, 300);
+    fetch(`http://${window.location.hostname}:8080/api/geofence`)
+      .then((r) => r.json())
+      .then((d) => { if (d.enabled && d.zones?.[0]) { const z = d.zones[0]; setZone({ e: z.center.e, n: z.center.n, radius: z.radius }); } })
+      .catch(() => {});
     return () => clearInterval(id);
   }, []);
 
@@ -57,6 +66,7 @@ const Missions: React.FC = () => {
         {'  '}alt {state.altitude.toFixed(1)} m {'  '}spd {state.speed.toFixed(1)} m/s
         {!airborne && <span style={{ color: '#FF9F1C' }}>  — takeoff first, then click to fly</span>}
       </p>
+      {gfReason && <div style={{ color: '#FF6B6B', fontSize: 13, marginBottom: 8 }}>⚠ {gfReason}</div>}
 
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <svg
@@ -72,6 +82,16 @@ const Missions: React.FC = () => {
           {[100, 200, 300].map((r) => (
             <text key={r} x={CX + 3} y={CY - r / SCALE + 12} fill="#3a4a42" fontSize={10}>{r}m</text>
           ))}
+          {/* no-fly zone (real geofence — circular) */}
+          {zone && (() => {
+            const c = enuToPx(zone.e, zone.n);
+            return (
+              <g>
+                <circle cx={c.x} cy={c.y} r={zone.radius / SCALE} fill="rgba(255,42,42,0.13)" stroke="#FF2A2A" strokeWidth={1.5} />
+                <text x={c.x} y={c.y + 3} fill="#FF6B6B" fontSize={10} textAnchor="middle">NO-FLY</text>
+              </g>
+            );
+          })()}
           {/* home */}
           <rect x={CX - 5} y={CY - 5} width={10} height={10} fill="#00E5A0" />
           <text x={CX + 8} y={CY + 4} fill="#00E5A0" fontSize={11}>HOME</text>

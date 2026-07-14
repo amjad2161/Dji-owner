@@ -21,7 +21,7 @@ export class TelemetryService {
     heading: 0,
     mode: 'DISARMED'
   };
-  private navInfo = { navBackend: '', controlBackend: '', detectBackend: '', nis: 0, source: '' };
+  private navInfo = { navBackend: '', controlBackend: '', detectBackend: '', nis: 0, source: '', geofenceBackend: '', geofenceReason: '' };
   private pending: string[] = [];
 
   private constructor() {}
@@ -71,6 +71,8 @@ export class TelemetryService {
             detectBackend: data.detect_backend ?? this.navInfo.detectBackend,
             nis: data.nav_nis ?? this.navInfo.nis,
             source: data.source ?? this.navInfo.source,
+            geofenceBackend: data.geofence?.backend ?? this.navInfo.geofenceBackend,
+            geofenceReason: data.geofence?.reason ?? this.navInfo.geofenceReason,
           };
           this.notifySubscribers();
         } catch (e) {

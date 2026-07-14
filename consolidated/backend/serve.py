@@ -47,8 +47,8 @@ _PKG_CANDIDATES = [
     os.path.join(_here, "..", "src", "skycore_v1.0.0", "skycore"),
     r"C:\Users\Mobar\OneDrive\Desktop\SkyCore_Consolidated\src\skycore_v1.0.0\skycore",
 ]
-AdaptiveUKF = LQRController = CUASClassifier = ThreatFeatures = None
-NAV_BACKEND = CTRL_BACKEND = DETECT_BACKEND = "unavailable"
+AdaptiveUKF = LQRController = CUASClassifier = ThreatFeatures = GeofenceValidator = GeofenceConfig = None
+NAV_BACKEND = CTRL_BACKEND = DETECT_BACKEND = GEOFENCE_BACKEND = "unavailable"
 if np is not None:
     for _pkg in _PKG_CANDIDATES:
         if _pkg and os.path.isdir(_pkg):
@@ -69,6 +69,11 @@ if np is not None:
                 DETECT_BACKEND = "skycore.cuas.classifier.CUASClassifier (rule-based)"
             except Exception:
                 CUASClassifier = None
+            try:
+                from geofence import GeofenceValidator, GeofenceConfig  # type: ignore
+                GEOFENCE_BACKEND = "skycore.navigation.geofence.GeofenceValidator (circular)"
+            except Exception:
+                GeofenceValidator = GeofenceConfig = None
             break
 
 HOME_LAT, HOME_LON = 32.0853, 34.7818
@@ -84,6 +89,7 @@ MAX_H_SPEED = 16.0           # m/s horizontal velocity envelope (drone-like)
 MAX_V_SPEED = 4.0           # m/s vertical velocity envelope
 M_PER_DEG_LAT = 111_320.0
 M_PER_DEG_LON = M_PER_DEG_LAT * math.cos(math.radians(HOME_LAT))
+NOFLY_E, NOFLY_N, NOFLY_R = 150.0, 80.0, 60.0   # one circular no-fly zone, ENU metres
 
 
 class SimState:
@@ -141,6 +147,22 @@ class SimState:
             except Exception:
                 self.clf = None
 
+        # real geofence — one circular no-fly zone (module is circle-based, not polygon)
+        self.gf = None
+        self.geofence_backend = "none"
+        self.geofence_reason = ""
+        self._gf_ticks = 0
+        if GeofenceValidator is not None:
+            try:
+                self.gf = GeofenceValidator(GeofenceConfig(
+                    max_altitude=120.0, max_distance=100000.0, home=(HOME_LAT, HOME_LON, 0.0)))
+                nf_lat = HOME_LAT + NOFLY_N / M_PER_DEG_LAT
+                nf_lon = HOME_LON + NOFLY_E / M_PER_DEG_LON
+                self.gf.add_circular_zone(nf_lat, nf_lon, 0.0, radius_m=NOFLY_R, max_alt_m=0.0, name="nofly-1")
+                self.geofence_backend = GEOFENCE_BACKEND
+            except Exception:
+                self.gf, self.geofence_backend = None, "none (geofence init failed)"
+
     # ---- commands (mirror GCS TelemetryService.sendCommand) ----
     def command(self, cmd: str, p: dict) -> None:
         airborne = self.u > 0.5 or self.mode in ("TAKEOFF", "FLYING", "RTL")
@@ -160,9 +182,20 @@ class SimState:
             self.tgt_e, self.tgt_n = 0.0, 0.0
             self.mode = "RTL"
         elif cmd == "goto" and airborne:
-            self.tgt_e = (float(p["lon"]) - HOME_LON) * M_PER_DEG_LON
-            self.tgt_n = (float(p["lat"]) - HOME_LAT) * M_PER_DEG_LAT
-            self.tgt_u = float(p.get("altitude", self.u))
+            lat, lon = float(p["lat"]), float(p["lon"])
+            alt = float(p.get("altitude", self.u))
+            if self.gf is not None:                       # reject a waypoint inside the no-fly zone
+                try:
+                    ok, reason = self.gf.is_safe_to_fly(lat, lon, alt)
+                except Exception:
+                    ok, reason = True, ""
+                if not ok:
+                    self.geofence_reason = f"goto blocked: {reason}"
+                    return
+            self.geofence_reason = ""
+            self.tgt_e = (lon - HOME_LON) * M_PER_DEG_LON
+            self.tgt_n = (lat - HOME_LAT) * M_PER_DEG_LAT
+            self.tgt_u = alt
             self.mode = "FLYING"
 
     # ---- time evolution ----
@@ -196,6 +229,7 @@ class SimState:
             self.u, self.armed, self.mode = 0.0, False, "DISARMED"
 
         self._detect_step()
+        self._geofence_step()
         self._filter_step(dt)
 
     def _lqr_step(self) -> None:
@@ -278,6 +312,29 @@ class SimState:
         except Exception:
             self.threats, self.detect_backend = [], "none (classify failed)"
 
+    def _geofence_step(self) -> None:
+        """Per-tick geofence check (real GeofenceValidator, lat/lon degrees); RTL on breach."""
+        if self.gf is None:
+            return
+        self._gf_ticks += 1
+        if self._gf_ticks % 600 == 0:          # bound the validator's violation history
+            try:
+                self.gf.reset()
+            except Exception:
+                pass
+        if self.u <= 0.5:
+            return
+        try:
+            lat = HOME_LAT + self.n / M_PER_DEG_LAT
+            lon = HOME_LON + self.e / M_PER_DEG_LON
+            ok, reason = self.gf.is_safe_to_fly(lat, lon, self.u)
+        except Exception:
+            return
+        if not ok and self.mode not in ("RTL", "LANDING"):
+            self.geofence_reason = f"geofence breach -> RTL: {reason}"
+            self.tgt_e, self.tgt_n = 0.0, 0.0
+            self.mode = "RTL"
+
     def _filter_step(self, dt: float) -> None:
         if self.filter is None or np is None:
             return
@@ -321,6 +378,7 @@ class SimState:
             },
             "velocity": {"speed": round(speed if self.u > 0.5 else 0.0, 1)},
             "attitude": {"yaw": round(self.heading, 1)},
+            "geofence": {"backend": self.geofence_backend, "reason": self.geofence_reason},
         }
 
     def threat_feed(self) -> dict:
@@ -358,6 +416,20 @@ async def telemetry() -> dict:
 @app.get("/threats")
 async def threats() -> dict:
     return state.threat_feed()
+
+
+@app.get("/api/geofence")
+async def api_geofence() -> dict:
+    if state.gf is None:
+        return {"enabled": False, "backend": state.geofence_backend, "zones": []}
+    pts = [{"e": round(NOFLY_E + NOFLY_R * math.cos(2 * math.pi * i / 48), 1),
+            "n": round(NOFLY_N + NOFLY_R * math.sin(2 * math.pi * i / 48), 1)} for i in range(48)]
+    return {"enabled": True, "backend": state.geofence_backend, "zones": [{
+        "name": "nofly-1", "shape": "circle",
+        "center": {"e": NOFLY_E, "n": NOFLY_N}, "radius": NOFLY_R,
+        "polygon_enu": pts,
+        "center_latlon": {"lat": round(HOME_LAT + NOFLY_N / M_PER_DEG_LAT, 6),
+                          "lon": round(HOME_LON + NOFLY_E / M_PER_DEG_LON, 6)}}]}
 
 
 @app.websocket("/ws/telemetry")

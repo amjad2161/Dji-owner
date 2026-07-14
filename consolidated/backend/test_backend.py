@@ -87,6 +87,23 @@ def test_aukf_estimate_tracks_truth():
     assert err_m < 20.0, f"AUKF lateral error {err_m:.1f} m"
 
 
+def test_geofence_blocks_and_rtls():
+    s = serve.SimState()
+    assert s.gf is not None and "geofence" in s.geofence_backend.lower(), s.geofence_backend
+    s.command("takeoff", {"altitude": 40})
+    _steps(s, 60)
+    # a goto whose target sits inside the circular no-fly zone must be rejected
+    nf_lat = HOME_LAT + serve.NOFLY_N / M_PER_DEG_LAT
+    nf_lon = HOME_LON + serve.NOFLY_E / serve.M_PER_DEG_LON
+    s.command("goto", {"lat": nf_lat, "lon": nf_lon, "altitude": 40})
+    assert "blocked" in s.geofence_reason, s.geofence_reason
+    # forcing the aircraft inside the zone must trigger RTL on the next tick
+    s.e, s.n = serve.NOFLY_E, serve.NOFLY_N
+    _steps(s, 2)
+    assert s.mode == "RTL", s.mode
+    assert "breach" in s.geofence_reason, s.geofence_reason
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     passed = 0
