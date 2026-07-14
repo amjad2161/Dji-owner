@@ -148,7 +148,9 @@ VITE_OPENROUTER_API_KEY=sk-or-...
   Dashboard/Telemetry pages consume the live WebSocket.
 - Real **AUKF navigation**, **LQR control**, and **CUASClassifier detection** are wired into the
   live loop, and **all six GCS pages are real and backend-driven**:
-  - **Dashboard** — map + telemetry cards + threat count.
+  - **Dashboard** — a live tactical map (own drone from the AUKF estimate, the classified threats
+    colour-coded by severity with behaviour labels, the no-fly zone, the planned route) + telemetry
+    cards + a real event log derived from live state changes (mode / threat / geofence).
   - **Threats** — the real classifier feed (`/ws/threats`).
   - **Telemetry** — live SVG charts (altitude/speed/battery) + AUKF/LQR/detect provenance + NIS.
   - **Missions** — SVG tactical map; click the map to `goto` (flies the real LQR); arm/takeoff/land/RTL.
