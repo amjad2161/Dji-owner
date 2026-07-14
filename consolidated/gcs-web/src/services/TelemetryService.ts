@@ -12,6 +12,8 @@ export class TelemetryService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 2000;
+  private intentionalClose = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private currentState: DroneState = {
     connected: false,
     battery: 100,
@@ -35,13 +37,22 @@ export class TelemetryService {
   }
 
   public connect(): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
+    // bail if a socket is already open OR still opening (avoids orphaned parallel sockets)
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
+    // detach a previous (closed/closing) socket so it can't run its own reconnect loop
+    if (this.ws) {
+      this.ws.onopen = this.ws.onmessage = this.ws.onclose = this.ws.onerror = null;
+    }
+    this.intentionalClose = false;
 
     try {
-      // Connect to local SkyCore API
-      const wsUrl = `ws://${window.location.hostname}:8080/ws/telemetry`;
+      // Same-origin in the unified single-port deployment (wss under https); in dev the
+      // GCS runs on :4173 and the backend on :8080, so target 8080 explicitly.
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = import.meta.env.DEV ? `${window.location.hostname}:8080` : window.location.host;
+      const wsUrl = `${proto}//${host}/ws/telemetry`;
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
@@ -86,6 +97,7 @@ export class TelemetryService {
         console.log('Telemetry disconnected');
         this.currentState.connected = false;
         this.notifySubscribers();
+        if (this.intentionalClose) { this.intentionalClose = false; return; }  // do not revive a deliberate disconnect
         this.attemptReconnect();
       };
 
@@ -98,7 +110,10 @@ export class TelemetryService {
   }
 
   public disconnect(): void {
+    this.intentionalClose = true;
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }  // cancel a pending reconnect
     if (this.ws) {
+      this.ws.onopen = this.ws.onmessage = this.ws.onclose = this.ws.onerror = null;
       this.ws.close();
       this.ws = null;
     }
@@ -107,6 +122,7 @@ export class TelemetryService {
   }
 
   private attemptReconnect(): void {
+    if (this.intentionalClose) return;
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.log('Max reconnect attempts reached');
       return;
@@ -115,7 +131,8 @@ export class TelemetryService {
     this.reconnectAttempts++;
     console.log(`Reconnecting... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
 
-    setTimeout(() => {
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
       this.connect();
     }, this.reconnectDelay * this.reconnectAttempts);
   }

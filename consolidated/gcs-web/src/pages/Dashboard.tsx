@@ -54,7 +54,8 @@ const Dashboard: React.FC = () => {
       if (nowCrit && !hadCrit) push(`${s.critical} critical threat(s) detected`, SEV_COLOR.critical);
       else if (!nowCrit && hadCrit) push('threat level cleared', SEV_COLOR.low);
       prev.current.crit = s.critical;
-      if (reason && reason !== prev.current.reason) { push(reason, '#FF6B6B'); prev.current.reason = reason; }
+      // track the true current reason so a recurring identical reason re-notifies after it clears
+      if (reason !== prev.current.reason) { if (reason) push(reason, '#FF6B6B'); prev.current.reason = reason; }
     }, 1000);
 
     return () => { unsub(); clearInterval(id); clearInterval(wid); };

@@ -30,6 +30,7 @@ export class AdsBService {
   private backendThreats: Threat[] = [];
   private backendDetectBackend = '';
   private threatReconnect = 0;
+  private threatReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Threat thresholds
   private readonly SAFE_DISTANCE_M = 5000;
@@ -63,9 +64,13 @@ export class AdsBService {
   }
 
   private connectBackendThreats(): void {
+    if (!this.monitoring) return;                       // a queued reconnect must not revive a stopped feed
     if (this.threatWs?.readyState === WebSocket.OPEN) return;
     try {
-      const url = `ws://${window.location.hostname}:8080/ws/threats`;
+      // same-origin under the unified server (wss on https); dev backend is on :8080
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = import.meta.env.DEV ? `${window.location.hostname}:8080` : window.location.host;
+      const url = `${proto}//${host}/ws/threats`;
       const ws = new WebSocket(url);
       this.threatWs = ws;
       ws.onopen = () => { this.threatReconnect = 0; console.log('C-UAS threat feed connected'); };
@@ -92,7 +97,10 @@ export class AdsBService {
         this.backendThreats = [];
         if (this.monitoring && this.threatReconnect < 5) {
           this.threatReconnect++;
-          setTimeout(() => this.connectBackendThreats(), 2000 * this.threatReconnect);
+          this.threatReconnectTimer = setTimeout(() => {
+            this.threatReconnectTimer = null;
+            this.connectBackendThreats();
+          }, 2000 * this.threatReconnect);
         }
       };
       ws.onerror = () => { /* onclose handles retry */ };
@@ -102,16 +110,21 @@ export class AdsBService {
   }
 
   public stopMonitoring(): void {
+    this.monitoring = false;                            // set first so a firing reconnect bails
     if (this.updateInterval) {
       clearInterval(this.updateInterval);
       this.updateInterval = null;
     }
+    if (this.threatReconnectTimer) {                    // cancel a pending reconnect so it can't revive the socket
+      clearTimeout(this.threatReconnectTimer);
+      this.threatReconnectTimer = null;
+    }
     if (this.threatWs) {
+      this.threatWs.onclose = null;                     // don't let close() schedule another reconnect
       this.threatWs.close();
       this.threatWs = null;
     }
     this.backendThreats = [];
-    this.monitoring = false;
     console.log('ADS-B monitoring stopped');
   }
 

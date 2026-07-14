@@ -220,10 +220,11 @@ class SimState:
         return math.hypot(NOFLY_E - cx, NOFLY_N - cy) < NOFLY_R
 
     # ---- commands (mirror GCS TelemetryService.sendCommand) ----
-    def command(self, cmd: str, p: dict) -> None:
+    def command(self, cmd: str, p: dict, plan_inline: bool = True) -> None:
         airborne = self.u > 0.5 or self.mode in ("TAKEOFF", "FLYING", "RTL")
         if cmd in ("takeoff", "land", "rtl", "goto"):
             self.wp_queue, self.route = [], []   # a new target cancels any active route
+            self._pending_route = None
         if cmd == "arm" and not airborne:
             self.armed, self.mode = True, "ARMED"
         elif cmd == "disarm" and not airborne:
@@ -240,7 +241,10 @@ class SimState:
             self.tgt_e, self.tgt_n = 0.0, 0.0
             self.mode = "RTL"
         elif cmd == "goto" and airborne:
-            lat, lon = float(p["lat"]), float(p["lon"])
+            try:
+                lat, lon = float(p["lat"]), float(p["lon"])
+            except (KeyError, TypeError, ValueError):
+                return                                    # ignore a malformed goto, keep the socket alive
             alt = float(p.get("altitude", self.u))
             if self.gf is not None:                       # reject a waypoint inside the no-fly zone
                 try:
@@ -258,19 +262,37 @@ class SimState:
             self.wp_queue = []
             # if the straight path would cross the no-fly zone, plan a route AROUND it (real RRT*)
             if self.rrt is not None and self._seg_crosses_zone(self.e, self.n, te, tn):
-                try:
-                    self.rrt.clear_obstacles()
-                    self.rrt.add_obstacle(NOFLY_E, NOFLY_N, alt, NOFLY_R + 30.0)  # margin > LQR turn overshoot
-                    path = self.rrt.plan((self.e, self.n, self.u), (te, tn, alt))
-                except Exception:
-                    path = None
-                if path and len(path) >= 2:
-                    self.route = [{"e": round(float(p[0]), 1), "n": round(float(p[1]), 1)} for p in path]
-                    self.wp_queue = [(float(p[0]), float(p[1]), alt) for p in path[1:]]
-                    first = self.wp_queue.pop(0)
-                    self.tgt_e, self.tgt_n, self.mode = first[0], first[1], "FLYING"
+                if not plan_inline:
+                    # defer the CPU-bound RRT* solve so the async caller runs it OFF the
+                    # event loop (asyncio.to_thread) instead of blocking telemetry frames
+                    self._pending_route = (self.e, self.n, self.u, te, tn, alt)
                     return
+                path = self._solve_route((self.e, self.n, self.u), te, tn, alt)
+                self.apply_route(path, te, tn, alt)
+                return
             self.tgt_e, self.tgt_n, self.mode = te, tn, "FLYING"
+
+    def _solve_route(self, start: tuple, te: float, tn: float, alt: float):
+        """Real RRT* solve around the no-fly zone. Pure w.r.t. SimState (only touches
+        self.rrt), so it is safe to run in a worker thread via asyncio.to_thread."""
+        try:
+            self.rrt.clear_obstacles()
+            self.rrt.add_obstacle(NOFLY_E, NOFLY_N, alt, NOFLY_R + 30.0)  # margin > LQR turn overshoot
+            return self.rrt.plan(start, (te, tn, alt))
+        except Exception:
+            return None
+
+    def apply_route(self, path, te: float, tn: float, alt: float) -> None:
+        self._pending_route = None
+        if path and len(path) >= 2:
+            self.route = [{"e": round(float(wp[0]), 1), "n": round(float(wp[1]), 1)} for wp in path]
+            self.wp_queue = [(float(wp[0]), float(wp[1]), alt) for wp in path[1:]]
+            first = self.wp_queue.pop(0)
+            self.tgt_e, self.tgt_n, self.mode = first[0], first[1], "FLYING"
+            return
+        # avoidance was required but RRT* found no valid route: REJECT the goto rather than
+        # fly the straight line that is KNOWN to cross the no-fly zone (would trip RTL).
+        self.geofence_reason = "goto blocked: no clear route around no-fly zone"
 
     # ---- time evolution ----
     def step(self) -> None:
@@ -358,7 +380,13 @@ class SimState:
                 self.n += self.vn * dt
                 self.heading = (math.degrees(math.atan2(de, dn)) + 360) % 360
             else:
-                self.e, self.n, self.tgt_e, self.tgt_n = self.tgt_e, self.tgt_n, None, None
+                self.e, self.n = self.tgt_e, self.tgt_n
+                if self.wp_queue:                    # advance along the RRT* route (mirror _lqr_step)
+                    nxt = self.wp_queue.pop(0)
+                    self.tgt_e, self.tgt_n, self.tgt_u = nxt[0], nxt[1], nxt[2]
+                else:
+                    self.tgt_e = self.tgt_n = None
+                    self.route = []
 
     def _detect_step(self) -> None:
         if self.clf is None or ThreatFeatures is None:
@@ -609,8 +637,18 @@ async def ws_telemetry(ws: WebSocket) -> None:
                 msg = await ws.receive_json()
                 cmd = msg.get("command")
                 if cmd:
-                    state.command(cmd, {k: v for k, v in msg.items() if k != "command"})
-                    print(f"[cmd] {cmd} -> mode={state.mode}", flush=True)
+                    try:
+                        state.command(cmd, {k: v for k, v in msg.items() if k != "command"},
+                                      plan_inline=False)
+                        pending = getattr(state, "_pending_route", None)
+                        if pending:                              # RRT* solve deferred: run it off-loop
+                            e0, n0, u0, te, tn, alt = pending
+                            path = await asyncio.to_thread(state._solve_route, (e0, n0, u0), te, tn, alt)
+                            state.apply_route(path, te, tn, alt)
+                        print(f"[cmd] {cmd} -> mode={state.mode}", flush=True)
+                    except Exception as ex:                      # one bad command must not kill the loop
+                        print(f"[cmd-error] {cmd}: {ex}", flush=True)
+                        continue
         except Exception:
             return
 
@@ -654,9 +692,12 @@ if _DIST:
 
     @app.get("/{full_path:path}")
     async def _spa(full_path: str) -> FileResponse:
-        candidate = os.path.join(_DIST, full_path)
-        if full_path and os.path.isfile(candidate):
-            return FileResponse(candidate)
+        # Confine to _DIST: the {path} converter does NOT collapse `..`, so a raw
+        # `GET /../../serve.py` would otherwise escape the dist dir and leak source/DB.
+        root = os.path.realpath(_DIST)
+        real = os.path.realpath(os.path.join(_DIST, full_path))
+        if full_path and (real == root or real.startswith(root + os.sep)) and os.path.isfile(real):
+            return FileResponse(real)
         return FileResponse(os.path.join(_DIST, "index.html"))
 else:
     @app.get("/", response_class=HTMLResponse)
