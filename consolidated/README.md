@@ -6,7 +6,7 @@ together and verified end-to-end. For the honest inventory of the whole archive
 (what's real vs. marketing), see [`AUDIT.md`](./AUDIT.md).
 
 > **Honesty note.** A **software simulator** generates ground truth over real time.
-> Four GENUINE skycore modules run in the live loop against it:
+> Five GENUINE skycore modules run in the live loop against it:
 > - **navigation** — the real 22-state Adaptive UKF (`navigation/aukf.py`) filters noisy
 >   GPS; the telemetry the GCS shows is the filter's estimate (`nav_backend`, live `nav_nis`).
 > - **control** — the real `LQRController` (`control/lqr.py`) flies the aircraft closed-loop
@@ -16,6 +16,9 @@ together and verified end-to-end. For the honest inventory of the whole archive
 > - **geofence** — the real `GeofenceValidator` (`navigation/geofence.py`) enforces a **circular**
 >   no-fly zone (the module is circle-based, not polygon): a `goto` into the zone is rejected and
 >   the aircraft auto-RTLs on breach. Drawn on the Missions map (`GET /api/geofence`, `geofence` in telemetry).
+> - **planning** — the real `RRTStarPlanner` (`navigation/rrt.py`) routes a `goto` whose straight path
+>   would cross the no-fly zone **around** it (waypoints fed to the LQR; drawn as a dashed path on the
+>   Missions map) instead of tripping RTL. Verified: the aircraft rounds the zone with >40 m clearance.
 >
 > No physical drone and no real RF sensing are connected; every frame is tagged
 > `source: "simulator"` and reports which real backend is active. Detection/alerting only —
@@ -90,7 +93,7 @@ cd consolidated/backend
 venv\Scripts\python test_backend.py     # standalone; or: venv\Scripts\python -m pytest
 ```
 
-Expected: `8/8 passed` (nav / control / detection / geofence + shape checks).
+Expected: `9/9 passed` (nav / control / detection / geofence / planning + shape checks).
 
 ## Docker (one container)
 

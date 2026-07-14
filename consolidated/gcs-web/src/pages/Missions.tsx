@@ -24,6 +24,7 @@ const Missions: React.FC = () => {
   const [alt, setAlt] = useState(40);
   const [zone, setZone] = useState<{ e: number; n: number; radius: number } | null>(null);
   const [gfReason, setGfReason] = useState('');
+  const [route, setRoute] = useState<{ e: number; n: number }[]>([]);
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -31,6 +32,7 @@ const Missions: React.FC = () => {
     const id = setInterval(() => {
       setState(svc.getCurrentState());
       setGfReason(svc.getNavInfo().geofenceReason);
+      setRoute(svc.getRoute());
     }, 300);
     fetch(`http://${window.location.hostname}:8080/api/geofence`)
       .then((r) => r.json())
@@ -92,6 +94,13 @@ const Missions: React.FC = () => {
               </g>
             );
           })()}
+          {/* planned RRT* route around the no-fly zone */}
+          {route.length > 1 && (
+            <polyline
+              points={route.map((p) => { const q = enuToPx(p.e, p.n); return `${q.x.toFixed(1)},${q.y.toFixed(1)}`; }).join(' ')}
+              fill="none" stroke="#FFD166" strokeWidth={1.5} strokeDasharray="5 4"
+            />
+          )}
           {/* home */}
           <rect x={CX - 5} y={CY - 5} width={10} height={10} fill="#00E5A0" />
           <text x={CX + 8} y={CY + 4} fill="#00E5A0" fontSize={11}>HOME</text>

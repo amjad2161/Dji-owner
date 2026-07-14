@@ -104,6 +104,29 @@ def test_geofence_blocks_and_rtls():
     assert "breach" in s.geofence_reason, s.geofence_reason
 
 
+def test_rrt_routes_around_nofly():
+    s = serve.SimState()
+    if s.rrt is None:
+        return  # planner unavailable -> honest skip
+    assert "rrt" in s.route_backend.lower(), s.route_backend
+    s.command("takeoff", {"altitude": 40})
+    _steps(s, 60)
+    far_lat = HOME_LAT + 160.0 / M_PER_DEG_LAT
+    far_lon = HOME_LON + 300.0 / serve.M_PER_DEG_LON      # far side -> straight path crosses the zone
+    s.command("goto", {"lat": far_lat, "lon": far_lon, "altitude": 40})
+    assert s.route, "expected a planned route around the zone"
+    min_clear = 999.0
+    for _ in range(600):
+        _steps(s, 1)
+        min_clear = min(min_clear, math.hypot(s.e - serve.NOFLY_E, s.n - serve.NOFLY_N) - serve.NOFLY_R)
+        if s.mode == "RTL":
+            break
+        if math.hypot(s.e - 300.0, s.n - 160.0) < 5.0:
+            break
+    assert s.mode != "RTL", "routing should avoid the zone, not trip RTL"
+    assert min_clear > 0.0, f"aircraft entered the no-fly zone (clearance {min_clear:.1f} m)"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     passed = 0

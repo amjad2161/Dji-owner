@@ -23,6 +23,7 @@ export class TelemetryService {
   };
   private navInfo = { navBackend: '', controlBackend: '', detectBackend: '', nis: 0, source: '', geofenceBackend: '', geofenceReason: '' };
   private pending: string[] = [];
+  private lastRoute: { e: number; n: number }[] = [];
 
   private constructor() {}
 
@@ -74,6 +75,7 @@ export class TelemetryService {
             geofenceBackend: data.geofence?.backend ?? this.navInfo.geofenceBackend,
             geofenceReason: data.geofence?.reason ?? this.navInfo.geofenceReason,
           };
+          this.lastRoute = Array.isArray(data.route) ? data.route : this.lastRoute;
           this.notifySubscribers();
         } catch (e) {
           console.error('Failed to parse telemetry:', e);
@@ -149,6 +151,10 @@ export class TelemetryService {
 
   public getNavInfo() {
     return { ...this.navInfo };
+  }
+
+  public getRoute(): { e: number; n: number }[] {
+    return this.lastRoute;
   }
 
   // Commands

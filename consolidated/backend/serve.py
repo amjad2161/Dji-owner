@@ -47,7 +47,7 @@ _PKG_CANDIDATES = [
     os.path.join(_here, "..", "src", "skycore_v1.0.0", "skycore"),
     r"C:\Users\Mobar\OneDrive\Desktop\SkyCore_Consolidated\src\skycore_v1.0.0\skycore",
 ]
-AdaptiveUKF = LQRController = CUASClassifier = ThreatFeatures = GeofenceValidator = GeofenceConfig = None
+AdaptiveUKF = LQRController = CUASClassifier = ThreatFeatures = GeofenceValidator = GeofenceConfig = RRTStarPlanner = None
 NAV_BACKEND = CTRL_BACKEND = DETECT_BACKEND = GEOFENCE_BACKEND = "unavailable"
 if np is not None:
     for _pkg in _PKG_CANDIDATES:
@@ -74,6 +74,10 @@ if np is not None:
                 GEOFENCE_BACKEND = "skycore.navigation.geofence.GeofenceValidator (circular)"
             except Exception:
                 GeofenceValidator = GeofenceConfig = None
+            try:
+                from rrt import RRTStarPlanner  # type: ignore
+            except Exception:
+                RRTStarPlanner = None
             break
 
 HOME_LAT, HOME_LON = 32.0853, 34.7818
@@ -163,9 +167,35 @@ class SimState:
             except Exception:
                 self.gf, self.geofence_backend = None, "none (geofence init failed)"
 
+        # real path planner (RRT*) — route around the no-fly zone
+        self.rrt = None
+        self.route_backend = "none"
+        self.wp_queue: list = []
+        self.route: list = []
+        if RRTStarPlanner is not None:
+            try:
+                self.rrt = RRTStarPlanner((-400.0, 400.0, -400.0, 400.0, 0.0, 120.0), max_altitude=120)
+                self.rrt.max_nodes = 1200        # bound planning time (default 5000 is slow)
+                self.rrt.step_size = 12.0
+                self.rrt.rewire_radius = 24.0
+                self.rrt.goal_bias = 0.2
+                self.route_backend = "skycore.navigation.rrt.RRTStarPlanner"
+            except Exception:
+                self.rrt = None
+
+    @staticmethod
+    def _seg_crosses_zone(e0: float, n0: float, e1: float, n1: float) -> bool:
+        dx, dy = e1 - e0, n1 - n0
+        l2 = dx * dx + dy * dy
+        t = 0.0 if l2 < 1e-6 else max(0.0, min(1.0, ((NOFLY_E - e0) * dx + (NOFLY_N - n0) * dy) / l2))
+        cx, cy = e0 + t * dx, n0 + t * dy
+        return math.hypot(NOFLY_E - cx, NOFLY_N - cy) < NOFLY_R
+
     # ---- commands (mirror GCS TelemetryService.sendCommand) ----
     def command(self, cmd: str, p: dict) -> None:
         airborne = self.u > 0.5 or self.mode in ("TAKEOFF", "FLYING", "RTL")
+        if cmd in ("takeoff", "land", "rtl", "goto"):
+            self.wp_queue, self.route = [], []   # a new target cancels any active route
         if cmd == "arm" and not airborne:
             self.armed, self.mode = True, "ARMED"
         elif cmd == "disarm" and not airborne:
@@ -193,10 +223,26 @@ class SimState:
                     self.geofence_reason = f"goto blocked: {reason}"
                     return
             self.geofence_reason = ""
-            self.tgt_e = (lon - HOME_LON) * M_PER_DEG_LON
-            self.tgt_n = (lat - HOME_LAT) * M_PER_DEG_LAT
+            te = (lon - HOME_LON) * M_PER_DEG_LON
+            tn = (lat - HOME_LAT) * M_PER_DEG_LAT
             self.tgt_u = alt
-            self.mode = "FLYING"
+            self.route = []
+            self.wp_queue = []
+            # if the straight path would cross the no-fly zone, plan a route AROUND it (real RRT*)
+            if self.rrt is not None and self._seg_crosses_zone(self.e, self.n, te, tn):
+                try:
+                    self.rrt.clear_obstacles()
+                    self.rrt.add_obstacle(NOFLY_E, NOFLY_N, alt, NOFLY_R + 30.0)  # margin > LQR turn overshoot
+                    path = self.rrt.plan((self.e, self.n, self.u), (te, tn, alt))
+                except Exception:
+                    path = None
+                if path and len(path) >= 2:
+                    self.route = [{"e": round(float(p[0]), 1), "n": round(float(p[1]), 1)} for p in path]
+                    self.wp_queue = [(float(p[0]), float(p[1]), alt) for p in path[1:]]
+                    first = self.wp_queue.pop(0)
+                    self.tgt_e, self.tgt_n, self.mode = first[0], first[1], "FLYING"
+                    return
+            self.tgt_e, self.tgt_n, self.mode = te, tn, "FLYING"
 
     # ---- time evolution ----
     def step(self) -> None:
@@ -210,6 +256,7 @@ class SimState:
             self.battery = max(0.0, self.battery - BATTERY_DRAIN * dt)
         if self.battery <= 0.0 and self.mode != "DISARMED":
             self.mode, self.tgt_e, self.tgt_n, self.tgt_u = "LANDING", None, None, 0.0
+            self.wp_queue, self.route = [], []
 
         if self.lqr is not None:
             try:
@@ -254,8 +301,13 @@ class SimState:
         self.ve, self.vn, self.vu = float(xn[3]), float(xn[4]), float(xn[5])
         if math.hypot(self.ve, self.vn) > 0.1:
             self.heading = (math.degrees(math.atan2(self.ve, self.vn)) + 360) % 360
-        if self.tgt_e is not None and math.hypot(self.tgt_e - self.e, self.tgt_n - self.n) < 0.6:
-            self.tgt_e = self.tgt_n = None       # reached waypoint -> hold
+        if self.tgt_e is not None and math.hypot(self.tgt_e - self.e, self.tgt_n - self.n) < 3.0:
+            if self.wp_queue:                    # advance to the next planned RRT* waypoint
+                nxt = self.wp_queue.pop(0)
+                self.tgt_e, self.tgt_n, self.tgt_u = nxt[0], nxt[1], nxt[2]
+            else:
+                self.tgt_e = self.tgt_n = None   # arrived -> hold
+                self.route = []
 
     def _naive_step(self) -> None:
         dt = FDT
@@ -333,6 +385,7 @@ class SimState:
         if not ok and self.mode not in ("RTL", "LANDING"):
             self.geofence_reason = f"geofence breach -> RTL: {reason}"
             self.tgt_e, self.tgt_n = 0.0, 0.0
+            self.wp_queue, self.route = [], []
             self.mode = "RTL"
 
     def _filter_step(self, dt: float) -> None:
@@ -379,6 +432,8 @@ class SimState:
             "velocity": {"speed": round(speed if self.u > 0.5 else 0.0, 1)},
             "attitude": {"yaw": round(self.heading, 1)},
             "geofence": {"backend": self.geofence_backend, "reason": self.geofence_reason},
+            "planner": {"backend": self.route_backend, "waypoints": len(self.wp_queue)},
+            "route": self.route,
         }
 
     def threat_feed(self) -> dict:
