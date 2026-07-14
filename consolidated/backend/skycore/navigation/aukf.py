@@ -32,29 +32,18 @@ class AdaptiveUKF:
     - Noise adaptive estimation
     """
     
-    def __init__(self, lambda_param: float = 3.0, n_sigma: int = 45):
-        """
-        Initialize AUKF.
-        
-        Args:
-            lambda_param: Adaptation gain
-            n_sigma: Number of sigma points
-        """
+    def __init__(self):
+        """Initialize the 22-state UKF. The unscented-transform spread is set by
+        alpha/beta/kappa below; process noise is adapted by the IMM model bank."""
         self.dim_x = 22
         self.dim_z = 6  # GPS + barometer
-        
-        self.lambda_param = lambda_param
-        self.n_sigma = n_sigma
-        
+
         # State estimate
         self.x = np.zeros(self.dim_x)
-        
+
         # Error covariance
         self.P = np.eye(self.dim_x) * 10
-        
-        # Process noise (adaptive)
-        self.Q = np.eye(self.dim_x) * 0.01
-        
+
         # Measurement noise (adaptive)
         self.R = np.eye(self.dim_z)
         
@@ -125,12 +114,15 @@ class AdaptiveUKF:
         self.initialized = True
         log.info("AUKF initialized with position")
     
-    def _generate_sigma_points(self, Q: np.ndarray) -> np.ndarray:
-        """Generate sigma points with current covariance + process noise."""
+    def _generate_sigma_points(self) -> np.ndarray:
+        """Generate sigma points from the current covariance P alone. Additive
+        process noise Q is added ONCE to the predicted covariance in predict(),
+        so it must not also be folded into the sigma-point spread (that would
+        double-count Q and inflate the covariance / deflate the NIS)."""
         n = self.dim_x
-        
-        P_aug = self.P + Q
-        
+
+        P_aug = self.P
+
         try:
             U = np.linalg.cholesky(P_aug)
         except np.linalg.LinAlgError:
@@ -160,15 +152,12 @@ class AdaptiveUKF:
             self.initialize()
         
         self.dt = dt
-        
-        # Adapt process noise based on dynamics
-        self._adapt_process_noise(accel, gyro)
-        
-        # Select best model
+
+        # Select the adaptive process-noise model (IMM weighted bank)
         Q = self._select_model()
-        
-        # Generate sigma points
-        sigma_points = self._generate_sigma_points(Q)
+
+        # Generate sigma points from P; Q is added once to the predicted covariance below
+        sigma_points = self._generate_sigma_points()
         
         # Transform sigma points
         transformed = np.zeros_like(sigma_points)
@@ -287,7 +276,11 @@ class AdaptiveUKF:
         
         # Update state
         self.x = self.x + K @ y
-        
+
+        # Re-normalize the quaternion: the Kalman update nudges the attitude states
+        # off the unit sphere, and the norm drifts unbounded if never renormalized.
+        self.x[6:10] = self._normalize_quaternion(self.x[6:10])
+
         # Update covariance
         self.P = (np.eye(self.dim_x) - K @ H) @ self.P
         
@@ -312,19 +305,6 @@ class AdaptiveUKF:
             H[i, i] = 1.0
         
         return H
-    
-    def _adapt_process_noise(self, accel: np.ndarray, gyro: np.ndarray):
-        """Adapt process noise based on dynamics."""
-        accel_mag = np.linalg.norm(accel)
-        gyro_mag = np.linalg.norm(gyro)
-        
-        # High dynamics = more process noise
-        if accel_mag > 15 or gyro_mag > 3:
-            self.Q = self.model_Q[2]  # High maneuver model
-        elif accel_mag > 5 or gyro_mag > 0.5:
-            self.Q = self.model_Q[1]  # Degraded model
-        else:
-            self.Q = self.model_Q[0]  # Normal model
     
     def _adapt_measurement_noise(self, innovation: np.ndarray):
         """Adapt measurement noise based on innovation."""

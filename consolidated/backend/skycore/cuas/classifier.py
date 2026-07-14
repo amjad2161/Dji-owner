@@ -219,12 +219,16 @@ class CUASClassifier:
                     category = ThreatCategory.MILITARY_UAV
                 else:
                     category = ThreatCategory.HOMEMADE_DRONE
+            elif best_match == 'commercial':          # large / high-RCS object -> commercial drone
+                category = ThreatCategory.COMMERCIAL_DRONE
             elif best_match == 'bird':
                 category = ThreatCategory.BIRD
             elif best_match == 'balloon':
                 category = ThreatCategory.BALLOON
             elif best_match == 'hostile':
                 category = ThreatCategory.HOSTILE
+            elif best_match == 'friendly':            # transponder-identified -> treat as benign
+                category = ThreatCategory.BENIGN
             else:
                 category = ThreatCategory.BENIGN
         
@@ -281,13 +285,17 @@ class CUASClassifier:
     
     def _get_recommended_action(self, threat_level: ThreatLevel, 
                                 category: ThreatCategory) -> str:
-        """Get recommended action based on threat level."""
+        """Get recommended action based on threat level.
+
+        Detection / alerting ONLY. This is legitimate airspace-awareness software:
+        recommendations are operator/authority notification, never any countermeasure.
+        """
         actions = {
             ThreatLevel.NONE: "Continue monitoring",
             ThreatLevel.LOW: "Monitor and log",
-            ThreatLevel.MEDIUM: "Alert operator, prepare response",
-            ThreatLevel.HIGH: "Alert security, activate countermeasures",
-            ThreatLevel.CRITICAL: "Immediate response, activate all countermeasures"
+            ThreatLevel.MEDIUM: "Alert operator, continue tracking",
+            ThreatLevel.HIGH: "Alert security, track and notify authorities",
+            ThreatLevel.CRITICAL: "Immediate operator alert, escalate to authorities"
         }
         
         return actions.get(threat_level, "Assess situation")

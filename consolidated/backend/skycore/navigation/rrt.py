@@ -1,13 +1,18 @@
 """
 SkyCore RRT* Path Planner
 ========================
-Optimal Rapidly-exploring Random Tree for drone navigation.
+Rapidly-exploring Random Tree with RRT*-style rewiring for drone navigation.
+
+Note: plan() terminates at the FIRST collision-free solution (with local rewiring),
+so paths are near-optimal but not asymptotically optimal in the strict RRT* sense.
+Edges are collision-checked, so the tree itself respects obstacle clearance.
 """
 
 import numpy as np
 from typing import List, Tuple, Dict, Optional, Callable
 import logging
 import random
+import time
 
 log = logging.getLogger(__name__)
 
@@ -30,8 +35,8 @@ class RRTStarPlanner:
     RRT* Path Planner for drone navigation.
     
     Features:
-    - Optimal path planning with cost function
-    - Obstacle avoidance
+    - Cost-based (near-optimal) path planning, first-solution termination
+    - Collision-checked obstacle avoidance (nodes AND edges)
     - Path smoothing
     - Dynamic replanning
     """
@@ -114,60 +119,67 @@ class RRTStarPlanner:
         self.nodes.append(self.start)
         
         # RRT* iterations
-        start_time = random.time() if hasattr(random, 'time') else 0
+        start_time = time.time()
         iterations = 0
-        
+
         while len(self.nodes) < self.max_nodes:
-            # Check timeout
+            # Check timeout (wall-clock budget) and a hard iteration cap
             iterations += 1
-            if iterations > 10000:
+            if iterations > 10000 or (time.time() - start_time) > max_time:
                 break
-            
+
             # Sample random point
             if random.random() < self.goal_bias:
                 sample = goal_pos
             else:
                 sample = self._sample_random()
-            
+
             # Find nearest node
             nearest = self._nearest_node(sample)
-            
+
             # Steer towards sample
             new_pos = self._steer(nearest.pos, sample)
-            
+
             # Check if new position is valid
             if not self._is_valid(new_pos):
                 continue
-            
+
             # Find nearby nodes for rewiring
             nearby = self._near_nodes(new_pos, self.rewire_radius)
-            
-            # Find best parent
-            best_parent = nearest
-            best_cost = self._cost_to_node(nearest) + self._distance(nearest.pos, new_pos)
-            
-            for node in nearby:
+
+            # Choose the min-cost parent whose EDGE to new_pos is collision-free.
+            # Checking only endpoints (as before) lets a straight edge clip an
+            # obstacle between two valid points; edge-checking makes the tree itself
+            # obstacle-free rather than relying on a caller-side clearance pad.
+            best_parent = None
+            best_cost = float('inf')
+            for node in [nearest] + [n for n in nearby if n is not nearest]:
+                if not self._line_clear(tuple(node.pos), tuple(new_pos)):
+                    continue
                 cost = self._cost_to_node(node) + self._distance(node.pos, new_pos)
                 if cost < best_cost:
                     best_parent = node
                     best_cost = cost
-            
+            if best_parent is None:
+                continue                        # no collision-free connection to the tree
+
             # Create new node
             new_node = RRTStarNode(new_pos, best_parent, best_cost)
             best_parent.children.append(new_node)
             self.nodes.append(new_node)
-            
-            # Rewire nearby nodes
+
+            # Rewire nearby nodes (only through a collision-free edge)
             for node in nearby:
                 new_cost = best_cost + self._distance(new_pos, node.pos)
-                if new_cost < node.cost:
+                if new_cost < node.cost and self._line_clear(tuple(new_pos), tuple(node.pos)):
                     node.parent = new_node
                     node.cost = new_cost
                     new_node.children.append(node)
                     self._update_children_cost(node)
-            
-            # Check if goal reached
-            if self._distance(new_pos, goal_pos) < self.step_size:
+
+            # Check if goal reached (with a clear final edge)
+            if (self._distance(new_pos, goal_pos) < self.step_size
+                    and self._line_clear(tuple(new_pos), tuple(goal_pos))):
                 self.goal.parent = new_node
                 self.goal.cost = new_node.cost + self._distance(new_pos, goal_pos)
                 self.goal.pos = goal_pos

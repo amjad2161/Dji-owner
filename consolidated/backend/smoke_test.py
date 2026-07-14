@@ -83,14 +83,16 @@ async def main() -> int:
         for _ in range(130):
             await recv()
         await send("goto", lat=32.0867, lon=34.7850, altitude=40)
-        d = await recv()
-        routed = len(d.get("route", []))
+        # the RRT* solve runs off the event loop, so the route appears a few frames
+        # after the goto — track the max route length seen over the whole mission.
+        routed = 0
         rtl = False
         reached = False
         min_clear = 9e9
         nis = []
         for _ in range(360):
             d = await recv()
+            routed = max(routed, len(d.get("route", [])))
             e = (d["position"]["lon"] - HOME_LON) * M_LON
             n = (d["position"]["lat"] - HOME_LAT) * M_LAT
             min_clear = min(min_clear, math.hypot(e - NF_E, n - NF_N) - NF_R)

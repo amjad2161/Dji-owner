@@ -18,19 +18,22 @@ class GeofenceConfig:
     """Geofence configuration."""
     max_altitude: float = 120.0       # meters
     max_distance: float = 500.0       # meters from home
-    min_distance: float = 5.0         # minimum altitude AGL
+    min_altitude: float = 5.0         # minimum altitude AGL (meters)
     home: Tuple[float, float, float] = (0, 0, 0)  # lat, lon, alt
 
 
 @dataclass
 class GeofenceZone:
-    """Circular geofence zone."""
+    """Circular no-fly zone. Breached when horizontally inside `radius_m` AND
+    within the altitude band [min_alt_m, max_alt_m] (default band = all altitudes,
+    i.e. a full no-fly cylinder)."""
     center_lat: float
     center_lon: float
     center_alt: float
     radius_m: float
-    max_alt_m: float = 999.0
+    max_alt_m: float = 1e9            # ceiling of the no-fly band (default: no ceiling)
     name: str = ""
+    min_alt_m: float = 0.0            # floor of the no-fly band
 
 
 class GeofenceValidator:
@@ -78,9 +81,11 @@ class GeofenceValidator:
         self.zones.append(zone)
     
     def add_circular_zone(self, lat: float, lon: float, alt: float,
-                         radius_m: float, max_alt_m: float = 999.0, name: str = ""):
-        """Add circular no-fly zone."""
-        self.zones.append(GeofenceZone(lat, lon, alt, radius_m, max_alt_m, name))
+                         radius_m: float, max_alt_m: float = 1e9, name: str = "",
+                         min_alt_m: float = 0.0):
+        """Add circular no-fly zone (full-altitude cylinder by default; pass
+        min_alt_m/max_alt_m for an altitude-banded zone)."""
+        self.zones.append(GeofenceZone(lat, lon, alt, radius_m, max_alt_m, name, min_alt_m))
     
     def clear_zones(self):
         """Clear all custom zones."""
@@ -121,10 +126,10 @@ class GeofenceValidator:
             })
         
         # Check minimum altitude
-        if alt < self.config.min_distance:
+        if alt < self.config.min_altitude:
             result['warnings'].append({
                 'type': 'MIN_ALTITUDE',
-                'message': f'Altitude {alt:.1f}m below minimum {self.config.min_distance}m',
+                'message': f'Altitude {alt:.1f}m below minimum {self.config.min_altitude}m',
                 'severity': 'warning'
             })
         
@@ -162,27 +167,23 @@ class GeofenceValidator:
         return result
     
     def _check_zone(self, zone: GeofenceZone, lat: float, lon: float, alt: float) -> Optional[Dict]:
-        """Check if position violates a zone."""
+        """Check if position breaches a no-fly zone: horizontally inside the radius
+        AND within the zone's altitude band. Being inside the circle is itself the
+        breach (a no-fly zone), not merely a warning above a ceiling."""
         # Horizontal distance check
         dist = self._haversine_distance(zone.center_lat, zone.center_lon, lat, lon)
-        
+
         if dist > zone.radius_m:
-            return None  # Outside zone
-        
-        # Check altitude
-        if alt > zone.max_alt_m:
-            return {
-                'type': 'ZONE_VIOLATION',
-                'zone': zone.name,
-                'message': f'In zone "{zone.name}" at {alt:.1f}m (max {zone.max_alt_m}m)',
-                'severity': 'critical'
-            }
-        
+            return None  # outside the zone horizontally
+
+        if not (zone.min_alt_m <= alt <= zone.max_alt_m):
+            return None  # inside the circle but outside the protected altitude band
+
         return {
             'type': 'ZONE_VIOLATION',
             'zone': zone.name,
-            'message': f'Inside zone "{zone.name}"',
-            'severity': 'warning'
+            'message': f'Inside no-fly zone "{zone.name}" ({dist:.0f}m from center, alt {alt:.1f}m)',
+            'severity': 'critical'
         }
     
     def _haversine_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:

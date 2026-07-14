@@ -27,6 +27,7 @@ import math
 import os
 import random
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 
@@ -180,13 +181,15 @@ class SimState:
                     max_altitude=120.0, max_distance=100000.0, home=(HOME_LAT, HOME_LON, 0.0)))
                 nf_lat = HOME_LAT + NOFLY_N / M_PER_DEG_LAT
                 nf_lon = HOME_LON + NOFLY_E / M_PER_DEG_LON
-                self.gf.add_circular_zone(nf_lat, nf_lon, 0.0, radius_m=NOFLY_R, max_alt_m=0.0, name="nofly-1")
+                # full-altitude no-fly cylinder (module now treats inside-radius as the breach)
+                self.gf.add_circular_zone(nf_lat, nf_lon, 0.0, radius_m=NOFLY_R, name="nofly-1")
                 self.geofence_backend = GEOFENCE_BACKEND
             except Exception:
                 self.gf, self.geofence_backend = None, "none (geofence init failed)"
 
         # real path planner (RRT*) — route around the no-fly zone
         self.rrt = None
+        self._rrt_lock = threading.Lock()   # serialize solves: plan() mutates shared planner state
         self.route_backend = "none"
         self.wp_queue: list = []
         self.route: list = []
@@ -273,14 +276,17 @@ class SimState:
             self.tgt_e, self.tgt_n, self.mode = te, tn, "FLYING"
 
     def _solve_route(self, start: tuple, te: float, tn: float, alt: float):
-        """Real RRT* solve around the no-fly zone. Pure w.r.t. SimState (only touches
-        self.rrt), so it is safe to run in a worker thread via asyncio.to_thread."""
-        try:
-            self.rrt.clear_obstacles()
-            self.rrt.add_obstacle(NOFLY_E, NOFLY_N, alt, NOFLY_R + 30.0)  # margin > LQR turn overshoot
-            return self.rrt.plan(start, (te, tn, alt))
-        except Exception:
-            return None
+        """Real RRT* solve around the no-fly zone, run in a worker thread via
+        asyncio.to_thread. plan() mutates the shared planner's nodes/obstacles/
+        start/goal, so concurrent gotos from two clients would corrupt each other —
+        the lock serializes solves (does not touch other SimState fields)."""
+        with self._rrt_lock:
+            try:
+                self.rrt.clear_obstacles()
+                self.rrt.add_obstacle(NOFLY_E, NOFLY_N, alt, NOFLY_R + 30.0)  # margin > LQR turn overshoot
+                return self.rrt.plan(start, (te, tn, alt))
+            except Exception:
+                return None
 
     def apply_route(self, path, te: float, tn: float, alt: float) -> None:
         self._pending_route = None
