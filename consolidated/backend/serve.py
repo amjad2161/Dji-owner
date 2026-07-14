@@ -23,6 +23,10 @@ Env:  SKYCORE_PKG=<path to skycore package dir> to override module discovery.
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import hmac
+import json
 import math
 import os
 import random
@@ -30,8 +34,9 @@ import sys
 import threading
 import time
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
-from fastapi import FastAPI, WebSocket
+from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 
 try:
@@ -108,6 +113,78 @@ M_PER_DEG_LON = M_PER_DEG_LAT * math.cos(math.radians(HOME_LAT))
 NOFLY_E, NOFLY_N, NOFLY_R = 150.0, 80.0, 60.0   # one circular no-fly zone, ENU metres
 _weather = {"backend": WEATHER_BACKEND, "ok": None, "issues": ["fetching…"],
             "temp_c": None, "wind_kph": None, "gust_kph": None, "precip_mm_h": None, "clouds_pct": None}
+
+
+# ----------------------------------------------------------------------------
+# Config (env-driven) + authentication. This is legitimate access control for a
+# command/telemetry surface: without it any client that can reach the port could
+# arm/fly the (simulated) aircraft and read all data. Defaults: bind to loopback,
+# require a signed token on every data API and WebSocket. Set SKYCORE_HOST=0.0.0.0
+# (and provide SKYCORE_JWT_SECRET + real users) to expose beyond localhost.
+# ----------------------------------------------------------------------------
+HOST = os.environ.get("SKYCORE_HOST", "127.0.0.1")
+PORT = int(os.environ.get("SKYCORE_PORT", "8080"))
+AUTH_ENABLED = os.environ.get("SKYCORE_AUTH", "on").strip().lower() not in ("off", "0", "false", "no")
+TOKEN_TTL = int(os.environ.get("SKYCORE_TOKEN_TTL", str(12 * 3600)))
+JWT_SECRET = os.environ.get("SKYCORE_JWT_SECRET") or base64.urlsafe_b64encode(os.urandom(32)).decode()
+CORS_ORIGINS = [o.strip() for o in os.environ.get("SKYCORE_CORS_ORIGINS", "").split(",") if o.strip()] or [
+    "http://localhost:4173", "http://127.0.0.1:4173",   # vite preview (dev)
+    "http://localhost:5173", "http://127.0.0.1:5173",   # vite dev server
+]
+
+
+def _hash_pw(pw: str, salt: bytes) -> bytes:
+    return hashlib.pbkdf2_hmac("sha256", pw.encode(), salt, 120_000)
+
+
+# Users are defined + verified SERVER-SIDE (the client ships no credential map).
+# Override with SKYCORE_USERS='{"user":{"password":"..","role":".."}}'.
+_DEMO_USERS = {"admin": ("admin123", "operator"), "operator": ("operator123", "operator"),
+               "viewer": ("viewer123", "viewer"), "demo": ("demo", "viewer")}
+try:
+    _raw_users = json.loads(os.environ.get("SKYCORE_USERS", "") or "{}")
+    if _raw_users:
+        _DEMO_USERS = {u: (v.get("password", ""), v.get("role", "viewer")) for u, v in _raw_users.items()}
+except Exception:
+    pass
+_USERS: dict = {}
+for _u, (_pw, _role) in _DEMO_USERS.items():
+    _salt = os.urandom(16)
+    _USERS[_u] = {"hash": _hash_pw(_pw, _salt), "salt": _salt, "role": _role}
+
+
+def _b64u(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+
+def _b64u_dec(s: str) -> bytes:
+    return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+
+
+def make_token(sub: str, role: str) -> str:
+    """Mint a signed (HMAC-SHA256) JWT-shaped token with an expiry."""
+    header = _b64u(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
+    payload = _b64u(json.dumps({"sub": sub, "role": role, "exp": int(time.time()) + TOKEN_TTL},
+                               separators=(",", ":")).encode())
+    body = f"{header}.{payload}"
+    sig = _b64u(hmac.new(JWT_SECRET.encode(), body.encode(), hashlib.sha256).digest())
+    return f"{body}.{sig}"
+
+
+def verify_token(token: str):
+    """Return the token payload if the signature is valid and it has not expired, else None."""
+    try:
+        header, payload, sig = token.split(".")
+        body = f"{header}.{payload}"
+        expected = _b64u(hmac.new(JWT_SECRET.encode(), body.encode(), hashlib.sha256).digest())
+        if not hmac.compare_digest(sig, expected):
+            return None
+        data = json.loads(_b64u_dec(payload))
+        if int(data.get("exp", 0)) < time.time():
+            return None
+        return data
+    except Exception:
+        return None
 
 
 class SimState:
@@ -558,7 +635,72 @@ class SimState:
 
 state = SimState()
 app = FastAPI(title="SkyCore Live Backend (real AUKF + LQR + C-UAS)", version="3.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# Explicit origin allowlist (not "*"): same-origin under the unified server needs no
+# CORS; this covers the dev cross-origin case (GCS :4173 -> backend :8080).
+app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS,
+                   allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
+
+
+def require_auth(authorization: str = Header(default="")):
+    """FastAPI dependency: require a valid bearer token on protected routes."""
+    if not AUTH_ENABLED:
+        return {"sub": "anon", "role": "operator"}
+    if authorization.startswith("Bearer "):
+        data = verify_token(authorization[7:])
+        if data:
+            return data
+    raise HTTPException(status_code=401, detail="unauthorized")
+
+
+async def _ws_authorized(ws: WebSocket) -> bool:
+    """Gate a WebSocket: Origin allowlist (browsers) + a valid token (query param,
+    since browsers cannot set WS request headers). Non-browser clients send no
+    Origin but still need a token."""
+    origin = ws.headers.get("origin")
+    if origin:
+        same_origin = urlparse(origin).netloc == ws.headers.get("host", "")
+        if not (same_origin or origin in CORS_ORIGINS):
+            return False
+    if not AUTH_ENABLED:
+        return True
+    return verify_token(ws.query_params.get("token", "")) is not None
+
+
+@app.post("/api/login")
+async def api_login(creds: dict) -> dict:
+    """Verify credentials SERVER-SIDE and issue a signed token."""
+    u, pw = str(creds.get("username", "")), str(creds.get("password", ""))
+    rec = _USERS.get(u)
+    if rec and hmac.compare_digest(_hash_pw(pw, rec["salt"]), rec["hash"]):
+        return {"token": make_token(u, rec["role"]), "username": u, "role": rec["role"], "auth": AUTH_ENABLED}
+    raise HTTPException(status_code=401, detail="invalid credentials")
+
+
+@app.get("/api/healthz")
+async def api_healthz() -> dict:
+    """Public liveness endpoint (no auth) for health checks."""
+    return {"status": "ok", "auth": AUTH_ENABLED}
+
+
+@app.post("/api/chat", dependencies=[Depends(require_auth)])
+async def api_chat(req: dict) -> dict:
+    """Proxy the operator chat to OpenRouter so the API key stays SERVER-SIDE
+    (env OPENROUTER_API_KEY) instead of being shipped in the browser bundle.
+    Stays inert (honest offline reply) when no key is configured."""
+    key = os.environ.get("OPENROUTER_API_KEY", "")
+    if not key:
+        return {"ok": False, "reply": None, "reason": "no OPENROUTER_API_KEY configured on the server"}
+    try:
+        import urllib.request
+        body = json.dumps({"model": req.get("model", "openai/gpt-4o-mini"),
+                           "messages": req.get("messages", [])}).encode()
+        rq = urllib.request.Request("https://openrouter.ai/api/v1/chat/completions", data=body,
+                                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+        raw = await asyncio.to_thread(lambda: urllib.request.urlopen(rq, timeout=30).read())
+        reply = json.loads(raw).get("choices", [{}])[0].get("message", {}).get("content", "")
+        return {"ok": True, "reply": reply}
+    except Exception as ex:
+        return {"ok": False, "reply": None, "reason": f"chat proxy error: {ex}"}
 
 
 @app.on_event("startup")
@@ -588,7 +730,7 @@ async def _start() -> None:
     asyncio.create_task(weather_loop())
 
 
-@app.get("/api/status")
+@app.get("/api/status", dependencies=[Depends(require_auth)])
 async def api_status() -> dict:
     return {
         "service": "SkyCore Live Backend", "status": "running",
@@ -597,17 +739,17 @@ async def api_status() -> dict:
     }
 
 
-@app.get("/api/telemetry")
+@app.get("/api/telemetry", dependencies=[Depends(require_auth)])
 async def api_telemetry() -> dict:
     return state.snapshot()
 
 
-@app.get("/api/threats")
+@app.get("/api/threats", dependencies=[Depends(require_auth)])
 async def api_threats() -> dict:
     return state.threat_feed()
 
 
-@app.get("/api/geofence")
+@app.get("/api/geofence", dependencies=[Depends(require_auth)])
 async def api_geofence() -> dict:
     if state.gf is None:
         return {"enabled": False, "backend": state.geofence_backend, "zones": []}
@@ -621,12 +763,12 @@ async def api_geofence() -> dict:
                           "lon": round(HOME_LON + NOFLY_E / M_PER_DEG_LON, 6)}}]}
 
 
-@app.get("/api/weather")
+@app.get("/api/weather", dependencies=[Depends(require_auth)])
 async def api_weather() -> dict:
     return dict(_weather)
 
 
-@app.get("/api/flights")
+@app.get("/api/flights", dependencies=[Depends(require_auth)])
 async def api_flights() -> dict:
     if state.db is None:
         return {"available": False, "flights": []}
@@ -636,6 +778,9 @@ async def api_flights() -> dict:
 @app.websocket("/ws/telemetry")
 async def ws_telemetry(ws: WebSocket) -> None:
     await ws.accept()
+    if not await _ws_authorized(ws):
+        await ws.close(code=4401)          # unauthorized: reject before honoring any command
+        return
 
     async def receiver() -> None:
         try:
@@ -672,6 +817,9 @@ async def ws_telemetry(ws: WebSocket) -> None:
 @app.websocket("/ws/threats")
 async def ws_threats(ws: WebSocket) -> None:
     await ws.accept()
+    if not await _ws_authorized(ws):
+        await ws.close(code=4401)
+        return
     try:
         while True:
             await ws.send_json(state.threat_feed())
@@ -715,5 +863,9 @@ else:
 
 if __name__ == "__main__":
     import uvicorn
-    print(f"SkyCore live backend :8080 | nav={state.nav_backend} | ctrl={state.control_backend} | detect={state.detect_backend}", flush=True)
-    uvicorn.run(app, host="0.0.0.0", port=8080, log_level="warning")
+    print(f"SkyCore live backend {HOST}:{PORT} | auth={'on' if AUTH_ENABLED else 'OFF'} | "
+          f"nav={state.nav_backend} | ctrl={state.control_backend} | detect={state.detect_backend}", flush=True)
+    if HOST not in ("127.0.0.1", "localhost") and not os.environ.get("SKYCORE_JWT_SECRET"):
+        print("WARNING: exposed on a non-loopback host with an ephemeral JWT secret; "
+              "set SKYCORE_JWT_SECRET (and real SKYCORE_USERS) for a stable deployment.", flush=True)
+    uvicorn.run(app, host=HOST, port=PORT, log_level="warning")

@@ -6,6 +6,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { TelemetryService } from '../services/TelemetryService';
 import { AdsBService } from '../services/AdsBService';
+import { apiGet } from '../services/auth';
 import { DroneState, Threat } from '../App';
 
 const HOME_LAT = 32.0853, HOME_LON = 34.7818;
@@ -31,11 +32,10 @@ const Dashboard: React.FC = () => {
     const tel = TelemetryService.getInstance();
     const ads = AdsBService.getInstance();
     const unsub = tel.subscribe(setDrone);
-    fetch(`http://${window.location.hostname}:8080/api/geofence`)
-      .then((r) => r.json())
+    apiGet<{ enabled: boolean; zones?: { center: { e: number; n: number }; radius: number }[] }>('/api/geofence')
       .then((d) => { if (d.enabled && d.zones?.[0]) { const z = d.zones[0]; setZone({ e: z.center.e, n: z.center.n, radius: z.radius }); } })
       .catch(() => {});
-    const fetchWeather = () => fetch(`http://${window.location.hostname}:8080/api/weather`).then((r) => r.json()).then(setWeather).catch(() => {});
+    const fetchWeather = () => apiGet<{ ok?: boolean; temp_c?: number; wind_kph?: number; gust_kph?: number }>('/api/weather').then(setWeather).catch(() => {});
     fetchWeather();
     const wid = setInterval(fetchWeather, 60000);
 

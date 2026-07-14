@@ -25,17 +25,32 @@ M_LAT, M_LON = 111320.0, 111320.0 * math.cos(math.radians(HOME_LAT))
 NF_E, NF_N, NF_R = 150.0, 80.0, 60.0
 
 
+TOKEN = ""
+
+
 def _get(path):
-    with urllib.request.urlopen(BASE + path, timeout=6) as r:
+    headers = {"Authorization": f"Bearer {TOKEN}"} if TOKEN else {}
+    with urllib.request.urlopen(urllib.request.Request(BASE + path, headers=headers), timeout=6) as r:
         return json.load(r)
+
+
+def _login(user="admin", pw="admin123"):
+    data = json.dumps({"username": user, "password": pw}).encode()
+    req = urllib.request.Request(BASE + "/api/login", data=data, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=6) as r:
+        return json.load(r)["token"]
 
 
 async def main() -> int:
     import websockets  # imported here so a missing dep gives a clear message
+    global TOKEN
 
     print("=" * 68)
     print("SkyCore Singularity - end-to-end smoke test")
     print("=" * 68)
+
+    TOKEN = _login()                       # server-side auth: obtain a signed token first
+    print("AUTH      logged in, token acquired (%d chars)" % len(TOKEN))
 
     st = _get("/api/status")
     print("BACKENDS  nav   = %s" % st["nav_backend"])
@@ -54,7 +69,7 @@ async def main() -> int:
 
     print("-" * 68)
     print("MISSION   arm -> takeoff 40m -> goto across no-fly (expect RRT* route) -> land")
-    async with websockets.connect(WS) as ws:
+    async with websockets.connect(WS + "?token=" + TOKEN) as ws:
         async def send(cmd, **p):
             await ws.send(json.dumps({"command": cmd, **p}))
 

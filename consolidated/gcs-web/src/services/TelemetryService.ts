@@ -4,6 +4,7 @@
  */
 
 import { DroneState } from '../App';
+import { wsUrl } from './auth';
 
 export class TelemetryService {
   private static instance: TelemetryService;
@@ -48,12 +49,9 @@ export class TelemetryService {
     this.intentionalClose = false;
 
     try {
-      // Same-origin in the unified single-port deployment (wss under https); in dev the
-      // GCS runs on :4173 and the backend on :8080, so target 8080 explicitly.
-      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = import.meta.env.DEV ? `${window.location.hostname}:8080` : window.location.host;
-      const wsUrl = `${proto}//${host}/ws/telemetry`;
-      this.ws = new WebSocket(wsUrl);
+      // Same-origin in the unified deployment (wss under https); dev -> backend :8080.
+      // The auth token is carried as a query param (browsers can't set WS headers).
+      this.ws = new WebSocket(wsUrl('/ws/telemetry'));
 
       this.ws.onopen = () => {
         console.log('Telemetry connected');

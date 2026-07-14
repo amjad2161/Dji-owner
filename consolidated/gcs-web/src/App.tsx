@@ -16,6 +16,7 @@ import Telemetry from './pages/Telemetry';
 // Services
 import { TelemetryService } from './services/TelemetryService';
 import { AdsBService } from './services/AdsBService';
+import { getToken, tokenValid, setSession, getUser, clearSession } from './services/auth';
 
 export interface DroneState {
   connected: boolean;
@@ -41,29 +42,38 @@ const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<{ username: string; role: string } | null>(null);
 
-  useEffect(() => {
-    // Initialize services
+  // Connect the live services ONLY once authenticated — the backend rejects
+  // unauthenticated WebSockets, so a token must exist before connecting.
+  const startServices = () => {
     TelemetryService.getInstance().connect();
     AdsBService.getInstance().startMonitoring();
+  };
 
-    // Check existing session
-    const token = localStorage.getItem('skycore_token');
-    if (token) {
+  useEffect(() => {
+    // Restore a still-valid session (the server re-verifies the signature)
+    const token = getToken();
+    if (token && tokenValid(token)) {
+      setUser(getUser());
       setIsAuthenticated(true);
+      startServices();
+    } else {
+      clearSession();
     }
   }, []);
 
-  const handleLogin = (username: string, token: string) => {
-    localStorage.setItem('skycore_token', token);
+  const handleLogin = (username: string, token: string, role: string) => {
+    setSession(token, username, role);
+    setUser({ username, role });
     setIsAuthenticated(true);
-    setUser({ username, role: 'operator' });
+    startServices();
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('skycore_token');
+    clearSession();
     setIsAuthenticated(false);
     setUser(null);
     TelemetryService.getInstance().disconnect();
+    AdsBService.getInstance().stopMonitoring();
   };
 
   if (!isAuthenticated) {

@@ -1,7 +1,13 @@
 /**
- * SkyCore OpenRouter AI Service
- * Streaming chat with AI operator assistant
+ * SkyCore AI operator chat service.
+ *
+ * Calls the BACKEND proxy (POST /api/chat) so the OpenRouter API key stays
+ * server-side (env OPENROUTER_API_KEY) instead of being shipped in the browser
+ * bundle. The proxy is non-streaming, so the reply arrives as a single chunk;
+ * it returns an honest "unavailable" reason when no key is configured.
  */
+
+import { apiBase, authHeaders } from './auth';
 
 export interface ChatMessage {
   id: string;
@@ -35,73 +41,27 @@ export class OpenRouterService {
     this.abortController = new AbortController();
 
     try {
-      // In production, use actual OpenRouter API
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      // Proxy through the backend so the OpenRouter API key never reaches the browser.
+      const res = await fetch(`${apiBase()}/api/chat`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_OPENROUTER_API_KEY || ''}`,
-          'HTTP-Referer': 'https://skycore.local',
-          'X-Title': 'SkyCore GCS'
-        },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
-          model: 'anthropic/claude-3-haiku',
-          messages: messages.map(m => ({
-            role: m.role,
-            content: m.content
-          })),
-          stream: true
+          messages: messages.map(m => ({ role: m.role, content: m.content })),
         }),
-        signal: this.abortController.signal
+        signal: this.abortController.signal,
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      if (!res.ok) {
+        throw new Error(`chat proxy -> ${res.status}`);
       }
 
-      // Handle streaming response
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-
-      if (!reader) {
-        throw new Error('No response body');
+      const data = await res.json();
+      if (data.ok && data.reply) {
+        onChunk(data.reply as string);       // non-streaming: the full reply as one chunk
+        onComplete();
+      } else {
+        onError(new Error(data.reason || 'AI chat is not configured on the server'));
       }
-
-      let fullText = '';
-      let buf = '';                       // carry a partial line across read() boundaries
-
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) break;
-
-        buf += decoder.decode(value, { stream: true });   // streaming decode reassembles split multi-byte chars
-        const lines = buf.split('\n');
-        buf = lines.pop() ?? '';                            // last element is a (possibly incomplete) line -> defer
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') {
-              onComplete();
-              return;
-            }
-
-            try {
-              const parsed = JSON.parse(data);
-              const content = parsed.choices?.[0]?.delta?.content;
-              if (content) {
-                fullText += content;
-                onChunk(content);
-              }
-            } catch (e) {
-              // Skip invalid JSON
-            }
-          }
-        }
-      }
-
-      onComplete();
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
         console.log('Generation stopped');

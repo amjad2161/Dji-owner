@@ -4,9 +4,10 @@
  */
 
 import React, { useState } from 'react';
+import { login as apiLogin } from '../services/auth';
 
 interface LoginProps {
-  onLogin: (username: string, token: string) => void;
+  onLogin: (username: string, token: string, role: string) => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
@@ -20,25 +21,15 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setError('');
     setLoading(true);
 
-    // Simulate authentication
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    const validUsers: Record<string, string> = {
-      'admin': 'admin123',
-      'operator': 'operator123',
-      'viewer': 'viewer123',
-      'demo': 'demo'
-    };
-
-    if (validUsers[username] && validUsers[username] === password) {
-      // Create mock token
-      const token = btoa(JSON.stringify({ username, exp: Date.now() + 86400000 }));
-      onLogin(username, token);
-    } else {
+    // Credentials are verified SERVER-SIDE; the client never holds a password map.
+    try {
+      const { token, role } = await apiLogin(username, password);
+      onLogin(username, token, role);
+    } catch {
       setError('שם משתמש או סיסמה שגויים');
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (

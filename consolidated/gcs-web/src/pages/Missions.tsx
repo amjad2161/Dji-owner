@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { TelemetryService } from '../services/TelemetryService';
+import { apiGet } from '../services/auth';
 import { DroneState } from '../App';
 
 const HOME_LAT = 32.0853, HOME_LON = 34.7818;
@@ -35,11 +36,10 @@ const Missions: React.FC = () => {
       setGfReason(svc.getNavInfo().geofenceReason);
       setRoute(svc.getRoute());
     }, 300);
-    fetch(`http://${window.location.hostname}:8080/api/geofence`)
-      .then((r) => r.json())
+    apiGet<{ enabled: boolean; zones?: { center: { e: number; n: number }; radius: number }[] }>('/api/geofence')
       .then((d) => { if (d.enabled && d.zones?.[0]) { const z = d.zones[0]; setZone({ e: z.center.e, n: z.center.n, radius: z.radius }); } })
       .catch(() => {});
-    const fetchFlights = () => fetch(`http://${window.location.hostname}:8080/api/flights`).then((r) => r.json()).then((d) => setFlights(d.flights || [])).catch(() => {});
+    const fetchFlights = () => apiGet<{ flights?: typeof flights }>('/api/flights').then((d) => setFlights(d.flights || [])).catch(() => {});
     fetchFlights();
     const fid = setInterval(fetchFlights, 8000);
     return () => { clearInterval(id); clearInterval(fid); };

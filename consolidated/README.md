@@ -127,16 +127,31 @@ the UI + WebSockets + the vendored real modules). Everything is in `consolidated
 container is self-contained. _(Not built in this environment — Docker wasn't installed here — but
 the layout is verified working outside Docker.)_
 
+## Authentication & config
+
+The backend requires a **signed token** on every data API and WebSocket (verified
+server-side; the client ships no credential map). Log in via the GCS with a demo
+account (e.g. `admin` / `admin123`) — the server issues the token. Key env vars:
+
+| var | default | meaning |
+|-----|---------|---------|
+| `SKYCORE_HOST` | `127.0.0.1` | bind address — **loopback by default**; set `0.0.0.0` to expose |
+| `SKYCORE_PORT` | `8080` | port |
+| `SKYCORE_AUTH` | `on` | set `off` to disable auth (local dev only) |
+| `SKYCORE_JWT_SECRET` | *(ephemeral)* | signing secret — **set a stable value** for any real deployment |
+| `SKYCORE_USERS` | demo users | JSON `{"user":{"password":"..","role":".."}}` to replace the demo accounts |
+| `SKYCORE_CORS_ORIGINS` | dev localhost | comma-separated allowed origins |
+| `OPENROUTER_API_KEY` | *(unset)* | enables the AI Chat page (see below) |
+
 ## Optional — AI Chat page
 
-The AI Chat page calls OpenRouter. It stays inert without a key. To enable it, create
-`gcs-web/.env` with:
+The AI Chat page proxies through the backend (`POST /api/chat`) so the OpenRouter
+key stays **server-side** and never reaches the browser. Set it in the server's
+environment to enable full AI; otherwise the page answers from live telemetry offline.
 
 ```
-VITE_OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_API_KEY=sk-or-...
 ```
-
-(Do not commit real keys; a client-side key is exposed to the browser — for local use only.)
 
 ## Fixes applied during consolidation
 

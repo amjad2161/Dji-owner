@@ -3,8 +3,6 @@ import { OpenRouterService, ChatMessage } from '../services/OpenRouterService';
 import { TelemetryService } from '../services/TelemetryService';
 import { AdsBService } from '../services/AdsBService';
 
-const HAS_KEY = !!import.meta.env.VITE_OPENROUTER_API_KEY;
-
 function sitrep(): string {
   const s = TelemetryService.getInstance().getCurrentState();
   const nav = TelemetryService.getInstance().getNavInfo();
@@ -17,21 +15,19 @@ function localReply(text: string): string {
   const t = text.toLowerCase();
   const s = TelemetryService.getInstance().getCurrentState();
   const st = AdsBService.getInstance().getThreatStats();
-  if (/help|command|what can/.test(t)) return 'Offline assistant. Ask: status, battery, altitude, position, threats. Set VITE_OPENROUTER_API_KEY for full AI.';
+  if (/help|command|what can/.test(t)) return 'Offline assistant. Ask: status, battery, altitude, position, threats. (Full AI runs via the server proxy when an OpenRouter key is configured.)';
   if (/batter/.test(t)) return `Battery ${s.battery.toFixed(0)}%. ${s.battery < 25 ? 'Low — recommend Return-to-Home.' : 'Nominal.'}`;
   if (/alt|height/.test(t)) return `Altitude ${s.altitude.toFixed(1)} m, mode ${s.mode}, climb/descent ${s.speed.toFixed(1)} m/s ground speed.`;
   if (/position|where|location|coord/.test(t)) return `Position ${s.position.lat.toFixed(6)}, ${s.position.lon.toFixed(6)}; heading ${Math.round(s.heading)}°.`;
   if (/threat|intrud|uas|hostile|drone/.test(t)) return `${st.total} tracks: ${st.critical} critical, ${st.high} high, ${st.medium} medium. Check the Threats page for the classifier detail.`;
   if (/status|sitrep|report|situation/.test(t)) return sitrep();
-  return 'Offline assistant — no API key set. Try: status, battery, altitude, position, threats.';
+  return 'Offline assistant. Try: status, battery, altitude, position, threats.';
 }
 
 const AIChat: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([{
     id: 'sys', role: 'assistant',
-    content: HAS_KEY
-      ? 'AI operator online (OpenRouter). Ask me about the mission, telemetry, or threats.'
-      : 'Offline assistant (no OpenRouter key). I answer from live telemetry — try "status", "battery", "threats".',
+    content: 'AI operator. When the server has an OpenRouter key I answer via the model; otherwise I answer from live telemetry — try "status", "battery", "threats".',
     timestamp: new Date(),
   }]);
   const [input, setInput] = useState('');
@@ -49,11 +45,6 @@ const AIChat: React.FC = () => {
     setInput('');
     push({ id: 'u' + Date.now(), role: 'user', content: text, timestamp: new Date() });
 
-    if (!HAS_KEY) {
-      push({ id: 'a' + Date.now(), role: 'assistant', content: localReply(text), timestamp: new Date() });
-      return;
-    }
-
     setBusy(true);
     const id = 'a' + Date.now();
     push({ id, role: 'assistant', content: '', timestamp: new Date() });
@@ -62,11 +53,14 @@ const AIChat: React.FC = () => {
       ...messages.filter((m) => m.role !== 'system'),
       { id: 'u', role: 'user', content: text, timestamp: new Date() },
     ];
-    const append = (chunk: string) =>
-      setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, content: m.content + chunk } : m)));
+    const setContent = (content: string) =>
+      setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, content } : m)));
+    // Try the server AI proxy; if it has no key / errors, answer from live telemetry offline.
     await svc.streamCompletion(
-      history, append, () => setBusy(false),
-      (err) => { append(`\n[error: ${err.message}. Check VITE_OPENROUTER_API_KEY.]`); setBusy(false); },
+      history,
+      (chunk) => setContent(chunk),          // non-streaming proxy: whole reply as one chunk
+      () => setBusy(false),
+      () => { setContent(localReply(text)); setBusy(false); },
     );
   };
 
@@ -74,9 +68,8 @@ const AIChat: React.FC = () => {
     <div style={{ padding: 24, color: '#c7d3cd', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 48px)' }}>
       <h1 style={{ color: '#00E5A0', margin: 0 }}>AI Operator</h1>
       <p style={{ color: '#7d8a84', marginTop: 4 }}>
-        {HAS_KEY
-          ? <>Mode: <span style={{ color: '#00D4FF' }}>OpenRouter (anthropic/claude-3-haiku)</span></>
-          : <>Mode: <span style={{ color: '#FF9F1C' }}>offline — no API key</span> (answers from live telemetry)</>}
+        Mode: <span style={{ color: '#00D4FF' }}>server AI proxy</span> — falls back to the
+        offline telemetry assistant when the server has no OpenRouter key.
       </p>
 
       <div style={{ flex: 1, overflowY: 'auto', background: '#0c110f', border: '1px solid #1e2a24', borderRadius: 8, padding: 14, margin: '8px 0' }}>

@@ -8,6 +8,7 @@
  */
 
 import { Threat } from '../App';
+import { wsUrl } from './auth';
 
 export type ThreatLevel = 'none' | 'low' | 'medium' | 'high' | 'critical';
 
@@ -42,11 +43,9 @@ export class AdsBService {
     if (!this.monitoring) return;                       // a queued reconnect must not revive a stopped feed
     if (this.threatWs?.readyState === WebSocket.OPEN) return;
     try {
-      // same-origin under the unified server (wss on https); dev backend is on :8080
-      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = import.meta.env.DEV ? `${window.location.hostname}:8080` : window.location.host;
-      const url = `${proto}//${host}/ws/threats`;
-      const ws = new WebSocket(url);
+      // same-origin under the unified server (wss on https); dev backend on :8080.
+      // Token carried as a query param (browsers can't set WS request headers).
+      const ws = new WebSocket(wsUrl('/ws/threats'));
       this.threatWs = ws;
       ws.onopen = () => { this.threatReconnect = 0; console.log('C-UAS threat feed connected'); };
       ws.onmessage = (event) => {
