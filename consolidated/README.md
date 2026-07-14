@@ -105,6 +105,16 @@ venv\Scripts\python test_backend.py     # standalone; or: venv\Scripts\python -m
 
 Expected: `11/11 passed` (nav / control / detection / geofence / planning / weather / flight-history + shape checks).
 
+There's also an **end-to-end smoke test** that drives one full mission against a running server
+(arm → takeoff → goto across the no-fly zone → RRT* route around → land) and checks every subsystem
+together (backends, live weather, classified threats, route/clearance, flight log):
+
+```powershell
+# with the server running (e.g. after ./launch.ps1):
+cd consolidated/backend
+venv\Scripts\python smoke_test.py     # exits 0 on PASS  (needs: pip install websockets)
+```
+
 ## Docker (one container)
 
 ```powershell
