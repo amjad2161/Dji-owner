@@ -11,8 +11,10 @@ together and verified end-to-end. For the honest inventory of the whole archive
 >   GPS; the telemetry the GCS shows is the filter's estimate (`nav_backend`, live `nav_nis`).
 > - **control** — the real `LQRController` (`control/lqr.py`) flies the aircraft closed-loop
 >   to its targets (`control_backend`).
-> - **detection** — the real `CUASClassifier` (`cuas/classifier.py`) classifies a **simulated**
->   intruder track into a severity-graded threat shown on the Threats page (`detect_backend`).
+> - **detection** — the real `CUASClassifier` (`cuas/classifier.py`) classifies **three simulated
+>   intruder tracks** (category + severity), each also tagged with a kinematic **behaviour**
+>   (`fast_approach` / `loitering` / `restricted_zone`), streamed to `/ws/threats` and shown with a
+>   BEHAVIOUR column on the Threats page (`detect_backend`).
 > - **geofence** — the real `GeofenceValidator` (`navigation/geofence.py`) enforces a **circular**
 >   no-fly zone (the module is circle-based, not polygon): a `goto` into the zone is rejected and
 >   the aircraft auto-RTLs on breach. Drawn on the Missions map (`GET /api/geofence`, `geofence` in telemetry).

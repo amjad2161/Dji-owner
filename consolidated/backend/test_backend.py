@@ -53,14 +53,20 @@ def test_land_disarms():
     assert s.u <= 0.2, s.u
 
 
-def test_detection_emits_valid_threat():
+def test_detection_emits_valid_threats_with_behaviour():
     s = serve.SimState()
-    _steps(s, 20)
-    assert s.threats, "classifier produced no threat"
-    t = s.threats[0]
-    assert t["severity"] in ("low", "medium", "high", "critical"), t["severity"]
-    assert isinstance(t["type"], str) and t["type"]
-    assert t["distance"] >= 0 and 0 <= t["bearing"] < 360
+    behaviours = set()
+    for _ in range(130):                       # ~13 s -> let loiter/incursion behaviours develop
+        s.step()
+        for t in s.threats:
+            behaviours.add(t["behavior"])
+    assert len(s.threats) >= 3, f"expected multiple tracks, got {len(s.threats)}"
+    for t in s.threats:
+        assert t["severity"] in ("low", "medium", "high", "critical"), t["severity"]
+        assert isinstance(t["type"], str) and t["type"]
+        assert t["behavior"] in ("fast_approach", "loitering", "restricted_zone", "transit"), t["behavior"]
+        assert t["distance"] >= 0 and 0 <= t["bearing"] < 360
+    assert "fast_approach" in behaviours and "loitering" in behaviours, behaviours
 
 
 def test_snapshot_shape_matches_gcs_contract():
@@ -105,6 +111,8 @@ def test_geofence_blocks_and_rtls():
 
 
 def test_rrt_routes_around_nofly():
+    import random
+    random.seed(20240714)                    # RRT* is randomized -> seed for a deterministic test
     s = serve.SimState()
     if s.rrt is None:
         return  # planner unavailable -> honest skip

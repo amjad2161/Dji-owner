@@ -143,7 +143,12 @@ class SimState:
         self.clf = None
         self.detect_backend = "none"
         self.threats: list[dict] = []
-        self.intr_e, self.intr_n, self.intr_u = 400.0, 0.0, 80.0
+        # three SIMULATED intruder tracks with distinct behaviours (each fed to the REAL classifier)
+        self.intruders = [
+            {"id": "trk-approach",  "beh": "approach",  "e": 400.0, "n": 0.0,    "u": 80.0, "th": 0.0, "prev": 400.0, "hist": []},
+            {"id": "trk-loiter",    "beh": "loiter",    "e": 295.0, "n": -150.0, "u": 60.0, "th": 0.0, "prev": 331.0, "hist": []},
+            {"id": "trk-incursion", "beh": "incursion", "e": 150.0, "n": -250.0, "u": 45.0, "th": 0.0, "prev": 291.0, "hist": []},
+        ]
         if CUASClassifier is not None:
             try:
                 self.clf = CUASClassifier(sensitivity=0.5)
@@ -334,35 +339,64 @@ class SimState:
     def _detect_step(self) -> None:
         if self.clf is None or ThreatFeatures is None:
             return
-        # advance the SIMULATED intruder: closes on home from the east, descending
-        self.intr_e -= INTRUDER_SPEED * FDT
-        dist_home = math.hypot(self.intr_e, self.intr_n)
-        self.intr_u = 30.0 + min(1.0, dist_home / 400.0) * 50.0   # 80 m far -> 30 m near
-        if self.intr_e < -60.0:                                    # passed us -> respawn
-            self.intr_e = 400.0
-        try:
-            # threat geometry is relative to the defended point (home = 0,0,0)
-            dist = math.sqrt(self.intr_e ** 2 + self.intr_n ** 2 + self.intr_u ** 2)
-            bearing = (math.degrees(math.atan2(self.intr_e, self.intr_n)) + 360) % 360
-            feat = ThreatFeatures(
-                radar_cross_section_db=-18.0, ground_speed_m_s=INTRUDER_SPEED,
-                altitude_m=self.intr_u, vertical_speed_m_s=0.0, size_m=0.8,
-                signal_strength_db=-70.0, track_direction_deg=bearing,
-                jammer_present=False, last_seen_sec=time.time(),
-            )
-            r = self.clf.classify(feat)
-            sev = {0: "low", 1: "low", 2: "medium", 3: "high", 4: "critical"}[r.threat_level.value]
-            self.threats = [{
-                "id": "intruder-1",
-                "type": r.category.value,
-                "severity": sev,
-                "distance": round(dist, 1),
-                "bearing": round(bearing, 1),
-                "confidence": round(r.confidence, 2),
-                "timestamp": round(r.timestamp * 1000.0),   # ms, for JS new Date()
-            }]
-        except Exception:
-            self.threats, self.detect_backend = [], "none (classify failed)"
+        threats = []
+        for it in self.intruders:
+            if it["beh"] == "approach":                     # fast straight run at home, descending
+                it["e"] -= 18.0 * FDT
+                it["u"] = 30.0 + min(1.0, math.hypot(it["e"], it["n"]) / 400.0) * 50.0
+                if it["e"] < -60.0:
+                    it["e"], it["hist"] = 400.0, []
+                speed = 18.0
+            elif it["beh"] == "loiter":                     # tight circle -> stays in a bounded region
+                it["th"] = (it["th"] + (8.0 / 25.0) * FDT) % (2 * math.pi)
+                it["e"] = 250.0 + 25.0 * math.cos(it["th"])
+                it["n"] = -150.0 + 25.0 * math.sin(it["th"])
+                speed = 8.0
+            else:                                           # incursion: drives north into the no-fly zone
+                it["n"] += 10.0 * FDT
+                if it["n"] > 120.0:
+                    it["n"], it["hist"] = -250.0, []
+                speed = 10.0
+            try:
+                dist = math.sqrt(it["e"] ** 2 + it["n"] ** 2 + it["u"] ** 2)
+                bearing = (math.degrees(math.atan2(it["e"], it["n"])) + 360) % 360
+                feat = ThreatFeatures(
+                    radar_cross_section_db=-18.0, ground_speed_m_s=speed, altitude_m=it["u"],
+                    vertical_speed_m_s=0.0, size_m=0.8, signal_strength_db=-70.0,
+                    track_direction_deg=bearing, jammer_present=False, last_seen_sec=time.time(),
+                )
+                r = self.clf.classify(feat)                 # REAL classifier -> category + severity
+                sev = {0: "low", 1: "low", 2: "medium", 3: "high", 4: "critical"}[r.threat_level.value]
+                it["hist"].append((it["e"], it["n"]))
+                if len(it["hist"]) > 100:
+                    it["hist"].pop(0)
+                behavior = self._behavior(it, dist)          # honest kinematic behaviour label
+                it["prev"] = dist
+                threats.append({
+                    "id": it["id"], "type": r.category.value, "severity": sev, "behavior": behavior,
+                    "distance": round(dist, 1), "bearing": round(bearing, 1),
+                    "confidence": round(r.confidence, 2), "timestamp": round(r.timestamp * 1000.0),
+                })
+            except Exception:
+                continue
+        rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+        self.threats = sorted(threats, key=lambda t: rank.get(t["severity"], 9))
+
+    def _behavior(self, it: dict, dist_home: float) -> str:
+        """Behaviour from the track's own kinematics (not from the classifier)."""
+        if math.hypot(it["e"] - NOFLY_E, it["n"] - NOFLY_N) < NOFLY_R + 40.0:
+            return "restricted_zone"
+        if (it["prev"] - dist_home) / FDT > 10.0:            # closing on home fast
+            return "fast_approach"
+        h = it["hist"]
+        if len(h) >= 60:                                    # stays in a bounded region while moving
+            cx = sum(p[0] for p in h) / len(h)
+            cy = sum(p[1] for p in h) / len(h)
+            maxr = max(math.hypot(p[0] - cx, p[1] - cy) for p in h)
+            path = sum(math.hypot(h[i + 1][0] - h[i][0], h[i + 1][1] - h[i][1]) for i in range(len(h) - 1))
+            if maxr < 40.0 and path > 40.0:
+                return "loitering"
+        return "transit"
 
     def _geofence_step(self) -> None:
         """Per-tick geofence check (real GeofenceValidator, lat/lon degrees); RTL on breach."""
@@ -463,13 +497,13 @@ async def api_status() -> dict:
     }
 
 
-@app.get("/telemetry")
-async def telemetry() -> dict:
+@app.get("/api/telemetry")
+async def api_telemetry() -> dict:
     return state.snapshot()
 
 
-@app.get("/threats")
-async def threats() -> dict:
+@app.get("/api/threats")
+async def api_threats() -> dict:
     return state.threat_feed()
 
 

@@ -34,6 +34,7 @@ export interface Threat {
   distance: number;
   bearing: number;
   timestamp: Date;
+  behavior?: string;
 }
 
 const App: React.FC = () => {

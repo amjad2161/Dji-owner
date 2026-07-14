@@ -64,7 +64,7 @@ const Threats: React.FC = () => {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ color: '#7d8a84', textAlign: 'left' }}>
-              {['ID', 'TYPE', 'SEVERITY', 'DISTANCE', 'BEARING', 'TIME'].map((h) => (
+              {['ID', 'TYPE', 'BEHAVIOR', 'SEVERITY', 'DISTANCE', 'BEARING', 'TIME'].map((h) => (
                 <th key={h} style={{ padding: '10px 14px', borderBottom: '1px solid #1e2a24' }}>{h}</th>
               ))}
             </tr>
@@ -72,7 +72,7 @@ const Threats: React.FC = () => {
           <tbody>
             {threats.length === 0 && (
               <tr>
-                <td colSpan={6} style={{ padding: 20, textAlign: 'center', color: '#7d8a84' }}>
+                <td colSpan={7} style={{ padding: 20, textAlign: 'center', color: '#7d8a84' }}>
                   No active threats
                 </td>
               </tr>
@@ -81,6 +81,7 @@ const Threats: React.FC = () => {
               <tr key={t.id} style={{ borderBottom: '1px solid #161f1b' }}>
                 <td style={{ padding: '10px 14px' }}>{t.id}</td>
                 <td style={{ padding: '10px 14px' }}>{t.type}</td>
+                <td style={{ padding: '10px 14px', color: '#00D4FF' }}>{t.behavior || '—'}</td>
                 <td style={{ padding: '10px 14px' }}>
                   <span style={{
                     color: SEV_COLOR[t.severity] || '#c7d3cd',

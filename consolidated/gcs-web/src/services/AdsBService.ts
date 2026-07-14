@@ -74,7 +74,7 @@ export class AdsBService {
           const data = JSON.parse(event.data);
           this.backendDetectBackend = data.detect_backend ?? '';
           this.backendThreats = (data.threats ?? []).map((t: {
-            id: string; type: string; severity: ThreatLevel; distance: number; bearing: number; timestamp: number;
+            id: string; type: string; severity: ThreatLevel; distance: number; bearing: number; timestamp: number; behavior?: string;
           }) => ({
             id: t.id,
             type: t.type,
@@ -82,6 +82,7 @@ export class AdsBService {
             distance: t.distance,
             bearing: t.bearing,
             timestamp: new Date(t.timestamp),
+            behavior: t.behavior,
           }));
         } catch (e) {
           console.error('Failed to parse threat feed:', e);
