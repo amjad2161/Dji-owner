@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import AsyncIterator, Optional
 
 from skycore.core.drone import Drone
@@ -143,7 +143,7 @@ class TelloDrone(Drone):
         await loop.run_in_executor(None, self._tello.streamon)
         await asyncio.sleep(0.5)
         frame = await loop.run_in_executor(None, self._tello.get_frame_read)
-        ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         path = f"./tello-photo-{ts}.jpg"
         try:
             import cv2  # type: ignore
@@ -165,7 +165,7 @@ class TelloDrone(Drone):
         battery = await loop.run_in_executor(None, self._tello.get_battery)
         height = await loop.run_in_executor(None, self._tello.get_height)
         return Telemetry(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             position=GeoPoint(self.home.lat, self.home.lon, height / 100.0),
             velocity_xyz=(0.0, 0.0, 0.0),
             yaw_deg=self._yaw_deg,

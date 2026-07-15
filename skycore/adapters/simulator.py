@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import AsyncIterator, Optional
 
 from skycore.core.drone import Drone
@@ -126,7 +126,7 @@ class SimulatorDrone(Drone):
 
     async def get_telemetry(self) -> Telemetry:
         return Telemetry(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             position=self.position,
             velocity_xyz=self.velocity_xyz,
             yaw_deg=self.yaw_deg,

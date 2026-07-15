@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import AsyncIterator, Optional
 
 from skycore.core.drone import Drone
@@ -122,7 +122,7 @@ class MavlinkDrone(Drone):
             async for batt in self._system.telemetry.battery():
                 async for att in self._system.telemetry.attitude_euler():
                     return Telemetry(
-                        timestamp=datetime.utcnow(),
+                        timestamp=datetime.now(timezone.utc),
                         position=GeoPoint(pos.latitude_deg, pos.longitude_deg, pos.relative_altitude_m),
                         velocity_xyz=(0.0, 0.0, 0.0),
                         yaw_deg=att.yaw_deg,
@@ -139,7 +139,7 @@ class MavlinkDrone(Drone):
     async def telemetry_stream(self) -> AsyncIterator[Telemetry]:
         async for pos in self._system.telemetry.position():
             yield Telemetry(
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 position=GeoPoint(pos.latitude_deg, pos.longitude_deg, pos.relative_altitude_m),
                 velocity_xyz=(0.0, 0.0, 0.0),
                 yaw_deg=0.0,

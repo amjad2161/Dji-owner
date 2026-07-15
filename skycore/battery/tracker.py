@@ -14,7 +14,7 @@ import json
 import logging
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -94,7 +94,7 @@ class BatteryRegistry:
         cur = self._conn.execute(
             "INSERT INTO batteries (serial, nominal_capacity_mah, cell_count, notes, created_at) "
             "VALUES (?, ?, ?, ?, ?)",
-            (record.serial, record.nominal_capacity_mah, record.cell_count, record.notes, datetime.utcnow().isoformat()),
+            (record.serial, record.nominal_capacity_mah, record.cell_count, record.notes, datetime.now(timezone.utc).isoformat()),
         )
         self._conn.commit()
         return cur.lastrowid
@@ -103,7 +103,7 @@ class BatteryRegistry:
         battery_id = self.register(BatteryRecord(serial=serial))
         cur = self._conn.execute(
             "INSERT INTO battery_cycles (battery_id, started_at, start_percent, flight_id) VALUES (?, ?, ?, ?)",
-            (battery_id, datetime.utcnow().isoformat(), start_percent, flight_id),
+            (battery_id, datetime.now(timezone.utc).isoformat(), start_percent, flight_id),
         )
         self._conn.commit()
         return cur.lastrowid
@@ -111,7 +111,7 @@ class BatteryRegistry:
     def end_cycle(self, cycle_id: int, end_percent: float, min_voltage: float) -> None:
         self._conn.execute(
             "UPDATE battery_cycles SET ended_at = ?, end_percent = ?, min_voltage = ? WHERE id = ?",
-            (datetime.utcnow().isoformat(), end_percent, min_voltage, cycle_id),
+            (datetime.now(timezone.utc).isoformat(), end_percent, min_voltage, cycle_id),
         )
         self._conn.commit()
 

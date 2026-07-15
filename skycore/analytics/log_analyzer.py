@@ -120,9 +120,16 @@ def analyze_csv(path: Path | str) -> FlightSummary:
 
     if (b_delta := s.battery_delta()) and b_delta > 85:
         s.warnings.append(f"Battery delta {b_delta:.0f}% — unusually high (wind or aged battery?)")
-    if s.voltage_start and s.voltage_end and (s.voltage_start - s.voltage_end) > 1.0:
-        s.warnings.append(
-            f"Voltage drop {s.voltage_start - s.voltage_end:.2f} V — inspect cells"
-        )
+    if s.voltage_start and s.voltage_end:
+        v_drop = s.voltage_start - s.voltage_end
+        used = s.battery_delta() or 0.0
+        # A voltage sag is only anomalous if it's DISPROPORTIONATE to the capacity
+        # used — a healthy pack drops voltage roughly in step with state-of-charge, so
+        # a full discharge legitimately drops >1 V. Flag it only when the pack sagged a
+        # lot for little capacity used (a failing-cell signature).
+        if v_drop > 1.0 and (used <= 0 or v_drop / used > 0.08):
+            s.warnings.append(
+                f"Voltage drop {v_drop:.2f} V disproportionate to {used:.0f}% used — inspect cells"
+            )
 
     return s

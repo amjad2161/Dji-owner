@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -67,7 +67,7 @@ class MissionLibrary:
             }
             for s in mission.steps
         ]
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         cur = self._conn.execute(
             "INSERT INTO mission_plans (name, waypoints_json, tags, description, version, created_at, updated_at) "
             "VALUES (?, ?, ?, ?, 1, ?, ?)",
@@ -89,7 +89,7 @@ class MissionLibrary:
         ]
         self._conn.execute(
             "UPDATE mission_plans SET waypoints_json = ?, version = version + 1, updated_at = ? WHERE id = ?",
-            (json.dumps(wps), datetime.utcnow().isoformat(), mission_id),
+            (json.dumps(wps), datetime.now(timezone.utc).isoformat(), mission_id),
         )
         self._conn.commit()
 

@@ -31,3 +31,8 @@ desktop.ini
 
 # Claude Code local tooling config (not project content)
 .claude/
+
+# Python packaging artifacts
+*.egg-info/
+*.egg-link
+.eggs/

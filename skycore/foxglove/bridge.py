@@ -95,8 +95,8 @@ class FoxgloveServer:
         # Foxglove message frame: {op: "messageData", channelId, timestamp_ns, data}
         ts_ns = 0
         try:
-            from datetime import datetime
-            ts_ns = int(datetime.utcnow().timestamp() * 1e9)
+            from datetime import datetime, timezone
+            ts_ns = int(datetime.now(timezone.utc).timestamp() * 1e9)
         except Exception:
             pass
         msg = json.dumps({

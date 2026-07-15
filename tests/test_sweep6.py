@@ -2,7 +2,7 @@
 competency check, OpenSky helpers (logic only — no network).
 """
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -63,7 +63,7 @@ def test_voice_unrecognized():
 
 def _tm(yaw=0, pitch=0, roll=0, vx=0, vy=0):
     return Telemetry(
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         position=GeoPoint(0, 0, 10),
         velocity_xyz=(vx, vy, 0),
         yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll,

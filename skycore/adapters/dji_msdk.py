@@ -22,7 +22,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import AsyncIterator, Optional
 
 from skycore.core.drone import Drone
@@ -142,7 +142,7 @@ class DjiBridgeDrone(Drone):
 
     def _parse_telemetry(self, d: dict) -> Telemetry:
         return Telemetry(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             position=GeoPoint(d.get("lat", 0), d.get("lon", 0), d.get("alt", 0)),
             velocity_xyz=tuple(d.get("vel", (0, 0, 0))),
             yaw_deg=d.get("yaw", 0.0),

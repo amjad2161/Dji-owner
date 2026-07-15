@@ -42,6 +42,19 @@ jobs:
       - name: Build (tsc + vite)
         run: npm run build
 
+  skycore:
+    name: SkyCore part 1-12 (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install core deps (heavy CV/ML/MAVLink extras are optional and skipped)
+        run: pip install -r requirements.txt shapely astral pytest pytest-asyncio && pip install -e .
+      - name: Test suite
+        run: pytest tests -q
+
   e2e-smoke:
     name: End-to-end smoke (best-effort; needs live weather API)
     runs-on: ubuntu-latest

@@ -13,7 +13,7 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -71,7 +71,7 @@ def build_manifest(
 
     return {
         "schema": "skycore-flight-manifest/v1",
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "flight_id": flight_id,
         "drone": {"name": drone_name, "model": drone_model},
         "operator": operator,

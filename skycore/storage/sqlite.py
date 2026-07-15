@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -78,7 +78,7 @@ class FlightDatabase:
     def start_flight(self, drone_name: str, home_lat: float, home_lon: float) -> int:
         cur = self._conn.execute(
             "INSERT INTO flights (drone_name, started_at, home_lat, home_lon) VALUES (?, ?, ?, ?)",
-            (drone_name, datetime.utcnow().isoformat(), home_lat, home_lon),
+            (drone_name, datetime.now(timezone.utc).isoformat(), home_lat, home_lon),
         )
         self._conn.commit()
         return cur.lastrowid
@@ -86,7 +86,7 @@ class FlightDatabase:
     def end_flight(self, flight_id: int, summary: dict) -> None:
         self._conn.execute(
             "UPDATE flights SET ended_at = ?, summary_json = ? WHERE id = ?",
-            (datetime.utcnow().isoformat(), json.dumps(summary), flight_id),
+            (datetime.now(timezone.utc).isoformat(), json.dumps(summary), flight_id),
         )
         self._conn.commit()
 
@@ -142,7 +142,7 @@ class FlightDatabase:
     def save_mission(self, name: str, waypoints: list[dict]) -> int:
         cur = self._conn.execute(
             "INSERT INTO missions (name, waypoints_json, created_at) VALUES (?, ?, ?)",
-            (name, json.dumps(waypoints), datetime.utcnow().isoformat()),
+            (name, json.dumps(waypoints), datetime.now(timezone.utc).isoformat()),
         )
         self._conn.commit()
         return cur.lastrowid
