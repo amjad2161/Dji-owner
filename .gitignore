@@ -1,55 +1,33 @@
-# Python
+# Build / dependency artifacts — never commit
+node_modules/
+dist/
+build/
+venv/
+.venv/
+env/
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
 .pytest_cache/
-.venv/
-venv/
-env/
-ENV/
+.mypy_cache/
+.ruff_cache/
 
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
+# Secrets / local env
+.env
+.env.local
+.env.*.local
+*.local
 
-# OS
-.DS_Store
+# Runtime artifacts (SQLite + logs)
+*.db
+*.db-wal
+*.db-shm
+*.log
+
+# OS cruft
 Thumbs.db
+ehthumbs.db
+.DS_Store
 desktop.ini
 
-# Drone artifacts (don't commit personal flight data)
-*.DAT
-*.dat
-*.flightlog
-*.txt.flight
-logs/
-flights/
-recordings/
-footage/
-*.mp4
-*.mov
-*.dng
-*.jpg.private
-
-# Generated
-.cache/
-*.log
+# Claude Code local tooling config (not project content)
+.claude/

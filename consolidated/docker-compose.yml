@@ -1,0 +1,13 @@
+services:
+  skycore:
+    build: .
+    image: skycore-singularity
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    # Optional: enable the OpenRouter-backed AI Chat by baking the key at BUILD time
+    # (Vite inlines VITE_* at build). Uncomment and set, then `docker compose build`:
+    # build:
+    #   context: .
+    #   args:
+    #     VITE_OPENROUTER_API_KEY: ${VITE_OPENROUTER_API_KEY}

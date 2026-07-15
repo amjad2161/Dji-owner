@@ -1,0 +1,1 @@
+# Vendored from amjad2161/Dji-owner skycore v1.0.0 — the real modules the live loop uses.
