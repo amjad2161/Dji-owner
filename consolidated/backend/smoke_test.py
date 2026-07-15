@@ -74,7 +74,12 @@ async def main() -> int:
             await ws.send(json.dumps({"command": cmd, **p}))
 
         async def recv():
-            return json.loads(await asyncio.wait_for(ws.recv(), timeout=6))
+            # skip command ack/nack reply frames; return only telemetry snapshots
+            while True:
+                m = json.loads(await asyncio.wait_for(ws.recv(), timeout=6))
+                if m.get("type") in ("ack", "nack"):
+                    continue
+                return m
 
         # reset to home if a previous run left the drone parked elsewhere
         d = await recv()

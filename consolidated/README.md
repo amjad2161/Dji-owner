@@ -135,9 +135,10 @@ docker compose up --build      # -> http://localhost:8080
 ```
 
 A multi-stage build compiles the GCS (node) and runs the unified Python server (which serves
-the UI + WebSockets + the vendored real modules). Everything is in `consolidated/`, so the
-container is self-contained. _(Not built in this environment — Docker wasn't installed here — but
-the layout is verified working outside Docker.)_
+the UI + WebSockets + the vendored real modules) as a **non-root** user with a `HEALTHCHECK`.
+Everything is in `consolidated/`, so the container is self-contained. _(Verified: the image
+builds and the container comes up **healthy**, serves the GCS + authenticated APIs, and passes
+the full end-to-end smoke test in-container.)_
 
 ## Authentication & config
 
