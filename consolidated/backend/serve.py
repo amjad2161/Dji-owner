@@ -373,7 +373,10 @@ class SimState:
         with self._rrt_lock:
             try:
                 self.rrt.clear_obstacles()
-                self.rrt.add_obstacle(NOFLY_E, NOFLY_N, alt, NOFLY_R + 30.0)  # margin > LQR turn overshoot
+                # Inflate well beyond NOFLY_R: the LQR carries momentum through the RRT
+                # waypoints and corner-cuts inward (measured up to ~40 m), so the PLANNED
+                # route must stand off far enough that the flown trajectory still clears.
+                self.rrt.add_obstacle(NOFLY_E, NOFLY_N, alt, NOFLY_R + 55.0)
                 return self.rrt.plan(start, (te, tn, alt))
             except Exception:
                 return None
