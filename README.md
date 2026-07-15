@@ -20,6 +20,10 @@ If you just want a better workflow with your drone, run the Windows installer an
 
 `skycore/` is a complete drone-operations platform that exposes a single async API across DJI, MAVLink (PX4 / ArduPilot), Tello, and a built-in simulator. Develop missions, vision pipelines, and dashboards without hardware; deploy the same code against any backend.
 
+### 3. Ground Control Station — the hardened, tested web GCS (`consolidated/`)
+
+[`consolidated/`](consolidated/README.md) is a self-contained, **fully tested and secured** Ground Control Station: a React + TypeScript web UI and a FastAPI backend that run **7 genuine algorithm modules** (22-state AUKF, LQR, rule-based C-UAS, circular geofence, RRT\* path planning with edge-checked clearance, live Open-Meteo weather, SQLite flight history) against a **labelled software simulator**, served on one port. It has **real token auth** on every API and WebSocket, health/readiness probes, command ACK/NACK feedback, a **non-root Docker image with a HEALTHCHECK** (builds + runs healthy), and **CI** (14 backend tests + frontend typecheck/vitest/build + e2e smoke). Detection/alerting only — no countermeasures. See [`consolidated/README.md`](consolidated/README.md).
+
 ## SkyCore at a glance
 
 ```python
