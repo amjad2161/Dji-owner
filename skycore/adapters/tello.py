@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from typing import AsyncIterator, Optional
 
 from skycore.core.drone import Drone
-from skycore.core.types import FlightMode, FlightStatus, GeoPoint, Telemetry
+from skycore.core.types import FlightMode, GeoPoint, Telemetry
 
 log = logging.getLogger(__name__)
 

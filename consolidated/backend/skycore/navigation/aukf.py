@@ -5,7 +5,7 @@ Adaptive Kalman filter with multiple models for robust navigation.
 """
 
 import numpy as np
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple
 import logging
 
 log = logging.getLogger(__name__)

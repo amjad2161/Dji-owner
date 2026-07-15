@@ -17,7 +17,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt ruff
+      - name: Lint (ruff — real errors only)
+        run: ruff check --select F,E9 .
       - name: Unit tests (real AUKF/LQR/C-UAS/geofence/RRT* in the loop)
         run: python test_backend.py
 
@@ -51,7 +53,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install core deps (heavy CV/ML/MAVLink extras are optional and skipped)
-        run: pip install -r requirements.txt shapely astral pytest pytest-asyncio && pip install -e .
+        run: pip install -r requirements.txt shapely astral pytest pytest-asyncio ruff && pip install -e .
+      - name: Lint (ruff — real errors only)
+        run: ruff check --select F,E9 skycore tests
       - name: Test suite
         run: pytest tests -q
 

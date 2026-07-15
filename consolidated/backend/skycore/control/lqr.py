@@ -42,7 +42,6 @@ class LQRController:
     
     def _compute_lqr_gain(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Solve Riccati equation for LQR gain."""
-        from scipy.linalg import solve
         
         # Discrete-time algebraic Riccati equation
         # P = Q + A^T P A - A^T P B (R + B^T P B)^-1 B^T P A

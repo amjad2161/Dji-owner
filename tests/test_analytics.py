@@ -1,7 +1,6 @@
 """Sanity tests for analytics module."""
 import pandas as pd
 import pytest
-from pathlib import Path
 
 from skycore.analytics.log_analyzer import analyze_csv
 

@@ -1,5 +1,4 @@
 """More tests for sweep 5 modules: checklist, templates, profiles, events, battery."""
-import asyncio
 import pytest
 
 from skycore import GeoPoint, SimulatorDrone

@@ -8,10 +8,9 @@ without coupling them to mission code.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Awaitable, Callable, Type, TypeVar
 
 log = logging.getLogger(__name__)
@@ -19,7 +18,7 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class DroneEvent:
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     drone_name: str = ""
 
 

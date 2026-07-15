@@ -6,7 +6,6 @@ or export to a Litchi CSV via `skycore.missions.litchi.export_litchi_csv`.
 """
 from __future__ import annotations
 
-import math
 from typing import Optional
 
 from skycore.core.types import GeoPoint, MissionStep
@@ -121,7 +120,6 @@ def hyperlapse_line(
         raise ValueError("need >= 2 photos")
     m = WaypointMission(name=name or "hyperlapse")
     yaw = start.bearing_to(end)
-    distance = start.haversine_m(end)
     for i in range(photos):
         t = i / (photos - 1)
         # interpolate by lat/lon directly (accurate for short distances)

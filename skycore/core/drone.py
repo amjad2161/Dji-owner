@@ -7,7 +7,7 @@ of this interface so it works against any backend.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator
 
 from skycore.core.types import GeoPoint, Telemetry
 

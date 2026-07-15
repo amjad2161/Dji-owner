@@ -9,10 +9,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
 
 from skycore.core.drone import Drone
-from skycore.core.types import GeoPoint, MissionStep
+from skycore.core.types import MissionStep
 
 log = logging.getLogger(__name__)
 

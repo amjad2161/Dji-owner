@@ -1,7 +1,6 @@
 """Local recorder. Pipes frames to FFmpeg via stdin to encode H.264/H.265."""
 from __future__ import annotations
 
-import asyncio
 import logging
 import shutil
 import subprocess

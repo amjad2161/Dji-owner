@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from skycore.core.drone import Drone
-from skycore.vision.detector import ObjectDetector, Detection
+from skycore.vision.detector import ObjectDetector
 from skycore.vision.tracker import ObjectTracker, Track
 
 log = logging.getLogger(__name__)

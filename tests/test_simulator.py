@@ -1,5 +1,4 @@
 """Sanity tests for the simulator backend and core types."""
-import asyncio
 import pytest
 
 from skycore import GeoPoint, SimulatorDrone, FlightMode

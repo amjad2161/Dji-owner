@@ -1,9 +1,7 @@
 """Tests for sweep 7 modules: validator, budget, KML/GPX, calibration,
 LUT parser, SRT, mission library, sidecar manifest."""
 import json
-import pytest
 from datetime import datetime
-from pathlib import Path
 
 from skycore import GeoPoint
 from skycore.missions.waypoint import WaypointMission

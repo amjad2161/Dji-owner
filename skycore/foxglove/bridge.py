@@ -10,10 +10,8 @@ channel: `/skycore/telemetry` carrying JSON-serialized telemetry frames.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-from typing import Optional
 
 from skycore.core.event_bus import EventBus
 

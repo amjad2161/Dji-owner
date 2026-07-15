@@ -4,7 +4,6 @@ SkyCore Geofence Validator
 Geofence monitoring and violation detection.
 """
 
-import numpy as np
 from typing import Tuple, Dict, List, Optional
 from dataclasses import dataclass
 import math

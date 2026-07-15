@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Awaitable, Callable, Optional
 
@@ -37,7 +37,7 @@ class ChecklistItem:
 @dataclass
 class ChecklistReport:
     items: list[ChecklistItem] = field(default_factory=list)
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def ok(self) -> bool:

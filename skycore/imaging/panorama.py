@@ -24,7 +24,6 @@ def stitch_panorama(
     """
     try:
         import cv2
-        import numpy as np
     except ImportError as e:
         raise ImportError("opencv-python is required. pip install opencv-python") from e
 

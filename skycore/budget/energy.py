@@ -12,7 +12,6 @@ Mavic 3 measured power curves to within ~10% across cruise speeds.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from skycore.missions.waypoint import WaypointMission
 

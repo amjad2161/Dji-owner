@@ -1,7 +1,6 @@
 """Tests for sweep 6 modules: voice command parser, wind estimator,
 competency check, OpenSky helpers (logic only — no network).
 """
-import math
 from datetime import datetime, timezone
 
 import pytest

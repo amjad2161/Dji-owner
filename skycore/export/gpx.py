@@ -5,9 +5,8 @@ GPX opens in Strava, Garmin Connect, GPSBabel, and most fitness / mapping tools.
 from __future__ import annotations
 
 import html
-from datetime import datetime
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable
 
 
 def telemetry_to_gpx(

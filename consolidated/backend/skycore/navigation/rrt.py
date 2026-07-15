@@ -9,7 +9,7 @@ Edges are collision-checked, so the tree itself respects obstacle clearance.
 """
 
 import numpy as np
-from typing import List, Tuple, Dict, Optional, Callable
+from typing import List, Tuple, Optional, Callable
 import logging
 import random
 import time

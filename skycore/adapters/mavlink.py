@@ -14,7 +14,6 @@ interface so vision / mission code written for the simulator works unchanged.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import AsyncIterator, Optional
@@ -92,7 +91,6 @@ class MavlinkDrone(Drone):
 
     async def set_gimbal(self, pitch_deg: float) -> None:
         try:
-            from mavsdk.gimbal import GimbalMode
             await self._system.gimbal.set_pitch_and_yaw(pitch_deg, 0.0)
         except Exception as e:
             log.warning("Gimbal control failed: %s", e)

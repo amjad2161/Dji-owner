@@ -9,7 +9,6 @@ Uses `astral` for sun ephemeris.
 """
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -27,7 +26,7 @@ class SunPosition:
 
 def sun_position(lat: float, lon: float, when: Optional[datetime] = None) -> SunPosition:
     try:
-        from astral import LocationInfo, Observer
+        from astral import Observer
         from astral.sun import azimuth, elevation
     except ImportError as e:
         raise ImportError("astral is required. pip install astral") from e

@@ -7,7 +7,6 @@ offsets, SQLite round-trip, replay parsing.
 """
 import asyncio
 import pytest
-from pathlib import Path
 
 from skycore import GeoPoint, SimulatorDrone
 from skycore.core.event_bus import EventBus
@@ -123,7 +122,6 @@ def test_sqlite_flight_roundtrip(tmp_path):
 async def test_replay_csv_publishes_to_bus(tmp_path):
     import csv
     from skycore.replay import replay_csv
-    from skycore.core.event_bus import EventBus
 
     csv_path = tmp_path / "r.csv"
     with csv_path.open("w", newline="") as f:

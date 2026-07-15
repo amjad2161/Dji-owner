@@ -6,10 +6,9 @@ Counter-Unmanned Aircraft System threat classification.
 
 import logging
 import time
-from typing import Dict, List, Optional, Tuple, Any, Callable
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
-import numpy as np
 
 log = logging.getLogger(__name__)
 
