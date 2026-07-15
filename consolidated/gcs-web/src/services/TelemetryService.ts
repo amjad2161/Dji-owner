@@ -6,6 +6,13 @@
 import { DroneState } from '../App';
 import { wsUrl } from './auth';
 
+export interface CommandResult {
+  command: string;
+  ok: boolean;
+  reason: string;
+  mode: string;
+}
+
 export class TelemetryService {
   private static instance: TelemetryService;
   private ws: WebSocket | null = null;
@@ -27,6 +34,7 @@ export class TelemetryService {
   private navInfo = { navBackend: '', controlBackend: '', detectBackend: '', nis: 0, source: '', geofenceBackend: '', geofenceReason: '' };
   private pending: string[] = [];
   private lastRoute: { e: number; n: number }[] = [];
+  private commandResultSubs: Set<(r: CommandResult) => void> = new Set();
 
   private constructor() {}
 
@@ -66,6 +74,14 @@ export class TelemetryService {
       this.ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          if (data.type === 'ack' || data.type === 'nack') {
+            // command accept/reject reply — not a telemetry snapshot
+            this.commandResultSubs.forEach((cb) => {
+              try { cb({ command: data.command, ok: !!data.ok, reason: data.reason || '', mode: data.mode || '' }); }
+              catch (e) { console.error('command-result subscriber error:', e); }
+            });
+            return;
+          }
           this.currentState = {
             ...this.currentState,
             battery: data.battery?.percent ?? this.currentState.battery,
@@ -148,6 +164,12 @@ export class TelemetryService {
 
   public unsubscribe(callback: (state: DroneState) => void): void {
     this.subscribers.delete(callback);
+  }
+
+  /** Subscribe to command accept/reject (ack/nack) replies. Returns an unsubscribe fn. */
+  public subscribeCommandResult(callback: (r: CommandResult) => void): () => void {
+    this.commandResultSubs.add(callback);
+    return () => { this.commandResultSubs.delete(callback); };
   }
 
   private notifySubscribers(): void {

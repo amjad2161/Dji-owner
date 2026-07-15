@@ -12,6 +12,7 @@ import Threats from './pages/Threats';
 import VideoStream from './pages/VideoStream';
 import AIChat from './pages/AIChat';
 import Telemetry from './pages/Telemetry';
+import CommandToast from './components/CommandToast';
 
 // Services
 import { TelemetryService } from './services/TelemetryService';
@@ -109,6 +110,7 @@ const App: React.FC = () => {
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </main>
+        <CommandToast />
       </div>
     </BrowserRouter>
   );

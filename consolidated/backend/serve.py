@@ -274,6 +274,7 @@ class SimState:
 
         # real path planner (RRT*) — route around the no-fly zone
         self.last_tick_mono = time.monotonic()   # updated each sim tick; /api/readyz reads its age
+        self._cmd_result = {"ok": True, "reason": ""}   # last command's accept/reject (for WS ack/nack)
         self.rrt = None
         self._rrt_lock = threading.Lock()   # serialize solves: plan() mutates shared planner state
         self.route_backend = "none"
@@ -310,6 +311,7 @@ class SimState:
 
     # ---- commands (mirror GCS TelemetryService.sendCommand) ----
     def command(self, cmd: str, p: dict, plan_inline: bool = True) -> None:
+        self._cmd_result = {"ok": True, "reason": ""}     # overridden below on a rejection
         airborne = self.u > 0.5 or self.mode in ("TAKEOFF", "FLYING", "RTL")
         if cmd in ("takeoff", "land", "rtl", "goto"):
             self.wp_queue, self.route = [], []   # a new target cancels any active route
@@ -333,6 +335,7 @@ class SimState:
             try:
                 lat, lon = float(p["lat"]), float(p["lon"])
             except (KeyError, TypeError, ValueError):
+                self._cmd_result = {"ok": False, "reason": "malformed goto (missing lat/lon)"}
                 return                                    # ignore a malformed goto, keep the socket alive
             alt = float(p.get("altitude", self.u))
             if self.gf is not None:                       # reject a waypoint inside the no-fly zone
@@ -342,6 +345,7 @@ class SimState:
                     ok, reason = True, ""
                 if not ok:
                     self.geofence_reason = f"goto blocked: {reason}"
+                    self._cmd_result = {"ok": False, "reason": self.geofence_reason}
                     return
             self.geofence_reason = ""
             te = (lon - HOME_LON) * M_PER_DEG_LON
@@ -381,10 +385,12 @@ class SimState:
             self.wp_queue = [(float(wp[0]), float(wp[1]), alt) for wp in path[1:]]
             first = self.wp_queue.pop(0)
             self.tgt_e, self.tgt_n, self.mode = first[0], first[1], "FLYING"
+            self._cmd_result = {"ok": True, "reason": ""}
             return
         # avoidance was required but RRT* found no valid route: REJECT the goto rather than
         # fly the straight line that is KNOWN to cross the no-fly zone (would trip RTL).
         self.geofence_reason = "goto blocked: no clear route around no-fly zone"
+        self._cmd_result = {"ok": False, "reason": self.geofence_reason}
 
     # ---- time evolution ----
     def step(self) -> None:
@@ -833,31 +839,43 @@ async def ws_telemetry(ws: WebSocket) -> None:
         await ws.close(code=4401)          # unauthorized: reject before honoring any command
         return
 
+    # One lock so the snapshot loop and the command-ack replies never interleave on the socket.
+    send_lock = asyncio.Lock()
+
+    async def _send(payload: dict) -> None:
+        async with send_lock:
+            await ws.send_json(payload)
+
     async def receiver() -> None:
         try:
             while True:
                 msg = await ws.receive_json()
                 cmd = msg.get("command")
-                if cmd:
-                    try:
-                        state.command(cmd, {k: v for k, v in msg.items() if k != "command"},
-                                      plan_inline=False)
-                        pending = getattr(state, "_pending_route", None)
-                        if pending:                              # RRT* solve deferred: run it off-loop
-                            e0, n0, u0, te, tn, alt = pending
-                            path = await asyncio.to_thread(state._solve_route, (e0, n0, u0), te, tn, alt)
-                            state.apply_route(path, te, tn, alt)
-                        log.info("cmd %s -> mode=%s", cmd, state.mode)
-                    except Exception as ex:                      # one bad command must not kill the loop
-                        log.warning("cmd %s failed: %s", cmd, ex)
-                        continue
+                if not cmd:
+                    continue
+                try:
+                    state.command(cmd, {k: v for k, v in msg.items() if k != "command"}, plan_inline=False)
+                    pending = getattr(state, "_pending_route", None)
+                    if pending:                              # RRT* solve deferred: run it off-loop
+                        e0, n0, u0, te, tn, alt = pending
+                        path = await asyncio.to_thread(state._solve_route, (e0, n0, u0), te, tn, alt)
+                        state.apply_route(path, te, tn, alt)
+                    res = getattr(state, "_cmd_result", None) or {"ok": True, "reason": ""}
+                    log.info("cmd %s -> mode=%s ok=%s", cmd, state.mode, res["ok"])
+                    await _send({"type": "ack" if res["ok"] else "nack", "command": cmd,
+                                 "ok": res["ok"], "reason": res.get("reason", ""), "mode": state.mode})
+                except Exception as ex:                      # one bad command must not kill the loop
+                    log.warning("cmd %s failed: %s", cmd, ex)
+                    await _send({"type": "nack", "command": cmd, "ok": False,
+                                 "reason": f"command error: {ex}", "mode": state.mode})
+                    continue
         except Exception:
             return
 
     recv = asyncio.create_task(receiver())
     try:
         while True:
-            await ws.send_json(state.snapshot())
+            await _send(state.snapshot())
             await asyncio.sleep(0.2)
     except Exception:
         pass
