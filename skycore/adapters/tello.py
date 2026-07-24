@@ -73,10 +73,14 @@ class TelloDrone(Drone):
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._tello.takeoff)
         self._mode = FlightMode.HOVER
-        if altitude_m > 1.5:
-            await self.set_velocity(0, 0, -((altitude_m - 1.5) * 1.0), 0)
-            await asyncio.sleep(altitude_m - 1.5)
-            await self.set_velocity(0, 0, 0, 0)
+        self._z_m = 1.5    # Tello's takeoff settles at ~1.5 m; keep the Z odometry in sync
+        # Closed-loop relative climb (cm precision) instead of an open-loop timed velocity
+        # burst (which was full up-stick for a blind fixed duration -> overshoot), and keep
+        # _z_m accurate so the next goto/return_to_home doesn't command an extra climb.
+        if altitude_m - 1.5 >= 0.2:
+            up_cm = min(500, int(round((altitude_m - 1.5) * 100)))
+            await loop.run_in_executor(None, self._tello.move_up, up_cm)
+            self._z_m = 1.5 + up_cm / 100.0
 
     async def land(self) -> None:
         loop = asyncio.get_running_loop()

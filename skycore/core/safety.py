@@ -31,7 +31,14 @@ class SafeDrone(Drone):
         self.config = config
         self.name = f"safe({inner.name})"
         self._monitor_task: Optional[asyncio.Task] = None
-        self._tripped = False
+        # Track RTH and LAND independently so a critically low battery can still LAND
+        # after an earlier RTH (a single latch would strand the drone flying home).
+        self._rth_done = False
+        self._land_done = False
+        self._gps_lost = False
+        # Keep strong references to fire-and-forget safety actions: create_task alone
+        # only holds a weak ref, so the emergency land/RTH could be GC'd before running.
+        self._action_tasks: set = set()
 
     @property
     def is_connected(self) -> bool:
@@ -97,20 +104,56 @@ class SafeDrone(Drone):
                     f"Target {d:.0f} m from home exceeds geofence radius {self.config.max_radius_m} m"
                 )
 
+    def _geofence_breach(self, tm: Telemetry) -> Optional[str]:
+        """Return a breach reason if the current telemetry position is outside the fence."""
+        if tm.position is None:
+            return None
+        if tm.position.alt > self.config.max_altitude_m:
+            return f"altitude {tm.position.alt:.0f} m > {self.config.max_altitude_m} m"
+        if self.config.home is not None:
+            d = self.config.home.haversine_m(tm.position)
+            if d > self.config.max_radius_m:
+                return f"{d:.0f} m from home > {self.config.max_radius_m} m"
+        return None
+
+    def _launch(self, coro) -> None:
+        """Fire a safety action and keep a strong reference until it completes."""
+        task = asyncio.create_task(coro)
+        self._action_tasks.add(task)
+        task.add_done_callback(self._action_tasks.discard)
+
     async def _monitor(self):
         try:
             async for tm in self.inner.telemetry_stream():
-                if self._tripped:
-                    continue
+                # Battery: LAND takes priority and may fire even after an earlier RTH.
                 if tm.battery_percent <= self.config.land_battery_threshold:
-                    log.warning("Battery %.0f%% ≤ land threshold; landing.", tm.battery_percent)
-                    self._tripped = True
-                    asyncio.create_task(self.inner.land())
+                    if not self._land_done:
+                        log.warning("Battery %.0f%% <= land threshold; landing.", tm.battery_percent)
+                        self._land_done = True
+                        self._launch(self.inner.land())
                 elif tm.battery_percent <= self.config.rth_battery_threshold:
-                    log.warning("Battery %.0f%% ≤ RTH threshold; returning to home.", tm.battery_percent)
-                    self._tripped = True
-                    asyncio.create_task(self.inner.return_to_home())
-                elif tm.gps_satellites < self.config.min_gps_satellites:
-                    log.warning("GPS satellites %d below minimum; halting motion.", tm.gps_satellites)
+                    if not self._rth_done and not self._land_done:
+                        log.warning("Battery %.0f%% <= RTH threshold; returning to home.", tm.battery_percent)
+                        self._rth_done = True
+                        self._launch(self.inner.return_to_home())
+
+                # Geofence enforced on EVERY frame (covers drift and set_velocity, which
+                # otherwise bypasses the goto-time check), independent of battery.
+                if not self._land_done and not self._rth_done:
+                    breach = self._geofence_breach(tm)
+                    if breach:
+                        log.warning("Geofence breach (%s); returning to home.", breach)
+                        self._rth_done = True
+                        self._launch(self.inner.return_to_home())
+
+                # GPS loss: independent of the battery/geofence chain. Stop horizontal
+                # motion once on entry (issuing a real command, not just a log).
+                gps_low = tm.gps_satellites < self.config.min_gps_satellites
+                if gps_low and not self._gps_lost and not self._land_done:
+                    log.warning("GPS satellites %d below minimum; commanding hover.", tm.gps_satellites)
+                    self._gps_lost = True
+                    self._launch(self.inner.set_velocity(0.0, 0.0, 0.0, 0.0))
+                elif not gps_low:
+                    self._gps_lost = False
         except asyncio.CancelledError:
             pass

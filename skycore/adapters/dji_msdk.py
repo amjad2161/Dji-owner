@@ -131,7 +131,11 @@ class DjiBridgeDrone(Drone):
                 except (TypeError, json.JSONDecodeError):
                     continue
                 if msg.get("event") == "telemetry":
-                    self._latest = self._parse_telemetry(msg.get("data", {}))
+                    try:
+                        self._latest = self._parse_telemetry(msg.get("data", {}))
+                    except Exception as ex:      # one malformed frame must not kill the reader
+                        log.warning("dropping malformed telemetry frame: %s", ex)
+                        continue
                     for q in self._tm_listeners:
                         try:
                             q.put_nowait(self._latest)
@@ -139,6 +143,15 @@ class DjiBridgeDrone(Drone):
                             pass
         except asyncio.CancelledError:
             return
+
+    @staticmethod
+    def _mode(value) -> FlightMode:
+        """Parse a flight-mode string, defaulting unknown values to HOVER instead of
+        raising ValueError (which would otherwise kill the reader task)."""
+        try:
+            return FlightMode(value)
+        except (ValueError, KeyError):
+            return FlightMode.HOVER
 
     def _parse_telemetry(self, d: dict) -> Telemetry:
         return Telemetry(
@@ -148,9 +161,11 @@ class DjiBridgeDrone(Drone):
             yaw_deg=d.get("yaw", 0.0),
             pitch_deg=d.get("pitch", 0.0),
             roll_deg=d.get("roll", 0.0),
-            battery_percent=d.get("battery_percent", 0.0),
+            # default battery to 100% (not 0%) so a missing field does not make a
+            # SafeDrone monitor read empty and trigger an emergency land
+            battery_percent=d.get("battery_percent", 100.0),
             battery_voltage=d.get("battery_voltage", 0.0),
             gps_satellites=d.get("gps_sats", 0),
             gimbal_pitch_deg=d.get("gimbal_pitch", 0.0),
-            flight_mode=FlightMode(d.get("mode", "hover")),
+            flight_mode=self._mode(d.get("mode", "hover")),
         )

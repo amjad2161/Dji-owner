@@ -6,10 +6,13 @@ of this interface so it works against any backend.
 """
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from typing import AsyncIterator
 
 from skycore.core.types import GeoPoint, Telemetry
+
+log = logging.getLogger(__name__)
 
 
 class Drone(ABC):
@@ -79,6 +82,12 @@ class Drone(ABC):
     async def __aexit__(self, exc_type, exc, tb) -> None:
         try:
             await self.land()
-        except Exception:
-            pass
+        except Exception as e:
+            # Landing failed on context exit: try RTH before dropping the link rather
+            # than silently disconnecting while the aircraft may still be airborne.
+            log.error("land() failed on exit (%s); attempting return-to-home", e)
+            try:
+                await self.return_to_home()
+            except Exception as e2:
+                log.error("return_to_home() also failed on exit: %s", e2)
         await self.disconnect()

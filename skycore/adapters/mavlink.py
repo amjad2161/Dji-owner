@@ -14,6 +14,7 @@ interface so vision / mission code written for the simulator works unchanged.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import AsyncIterator, Optional
@@ -39,6 +40,15 @@ class MavlinkDrone(Drone):
         self._system: Optional[System] = None
         self._connection_url = connection_url
         self._connected = False
+        # Latest telemetry components, kept fresh by background subscription pumps.
+        # Battery defaults to 100% so a SafeDrone monitor does NOT read 0% (and trigger
+        # an emergency land) before the first real battery frame arrives.
+        self._batt_pct = 100.0
+        self._batt_v = 0.0
+        self._gps_sats = 0
+        self._att = (0.0, 0.0, 0.0)   # yaw, pitch, roll (deg)
+        self._ground_amsl: Optional[float] = None   # takeoff-ground AMSL, for AGL->AMSL goto
+        self._sub_tasks: list = []
 
     @property
     def is_connected(self) -> bool:
@@ -53,8 +63,18 @@ class MavlinkDrone(Drone):
                 self._connected = True
                 log.info("MAVLink connected")
                 break
+        # keep the latest battery / GPS / attitude cached for telemetry + safety
+        self._sub_tasks = [
+            asyncio.create_task(self._pump_battery()),
+            asyncio.create_task(self._pump_gps()),
+            asyncio.create_task(self._pump_attitude()),
+            asyncio.create_task(self._pump_position_amsl()),
+        ]
 
     async def disconnect(self) -> None:
+        for t in self._sub_tasks:
+            t.cancel()
+        self._sub_tasks = []
         # MAVSDK has no explicit close; just drop the system reference
         self._connected = False
         self._system = None
@@ -71,9 +91,18 @@ class MavlinkDrone(Drone):
         await self._system.action.return_to_launch()
 
     async def goto(self, point: GeoPoint, speed_mps: float = 5.0) -> None:
-        # goto_location takes lat, lon, abs alt (AMSL), yaw
+        # GeoPoint.alt is height above takeoff (AGL); goto_location wants absolute AMSL.
+        # Convert using the takeoff-ground AMSL so a mission planned at e.g. 30 m AGL from
+        # a 400 m-elevation site does NOT command a descent to 30 m AMSL (into terrain).
         await self._system.action.set_maximum_speed(speed_mps)
-        await self._system.action.goto_location(point.lat, point.lon, point.alt, 0.0)
+        ground_amsl = self._ground_amsl
+        if ground_amsl is None:
+            async for pos in self._system.telemetry.position():
+                ground_amsl = pos.absolute_altitude_m - pos.relative_altitude_m
+                break
+        await self._system.action.goto_location(
+            point.lat, point.lon, (ground_amsl or 0.0) + point.alt, 0.0
+        )
 
     async def set_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float = 0.0) -> None:
         from mavsdk.offboard import VelocityBodyYawspeed
@@ -82,8 +111,11 @@ class MavlinkDrone(Drone):
         )
         try:
             await self._system.offboard.start()
-        except Exception:
-            pass  # already started
+        except Exception as e:
+            # start() raises when offboard is already active; log anything else so a real
+            # failure (mode refused, not armed) is not silently swallowed.
+            if "ALREADY" not in str(e).upper():
+                log.warning("offboard start failed: %s", e)
 
     async def set_yaw(self, yaw_deg: float) -> None:
         # Action API does not expose yaw directly; use offboard attitude instead
@@ -115,37 +147,58 @@ class MavlinkDrone(Drone):
         except Exception as e:
             log.warning("stop_recording failed: %s", e)
 
+    # --- telemetry component pumps (keep the latest reading cached) ---
+
+    async def _pump_battery(self) -> None:
+        try:
+            async for b in self._system.telemetry.battery():
+                self._batt_pct = b.remaining_percent * 100.0
+                self._batt_v = b.voltage_v
+        except (asyncio.CancelledError, Exception):
+            return
+
+    async def _pump_gps(self) -> None:
+        try:
+            async for g in self._system.telemetry.gps_info():
+                self._gps_sats = g.num_satellites
+        except (asyncio.CancelledError, Exception):
+            return
+
+    async def _pump_attitude(self) -> None:
+        try:
+            async for a in self._system.telemetry.attitude_euler():
+                self._att = (a.yaw_deg, a.pitch_deg, a.roll_deg)
+        except (asyncio.CancelledError, Exception):
+            return
+
+    async def _pump_position_amsl(self) -> None:
+        try:
+            async for pos in self._system.telemetry.position():
+                self._ground_amsl = pos.absolute_altitude_m - pos.relative_altitude_m
+        except (asyncio.CancelledError, Exception):
+            return
+
+    def _frame(self, pos) -> Telemetry:
+        yaw, pitch, roll = self._att
+        return Telemetry(
+            timestamp=datetime.now(timezone.utc),
+            position=GeoPoint(pos.latitude_deg, pos.longitude_deg, pos.relative_altitude_m),
+            velocity_xyz=(0.0, 0.0, 0.0),
+            yaw_deg=yaw,
+            pitch_deg=pitch,
+            roll_deg=roll,
+            battery_percent=self._batt_pct,
+            battery_voltage=self._batt_v,
+            gps_satellites=self._gps_sats,
+            gimbal_pitch_deg=0.0,
+            flight_mode=FlightMode.MISSION,
+        )
+
     async def get_telemetry(self) -> Telemetry:
         async for pos in self._system.telemetry.position():
-            async for batt in self._system.telemetry.battery():
-                async for att in self._system.telemetry.attitude_euler():
-                    return Telemetry(
-                        timestamp=datetime.now(timezone.utc),
-                        position=GeoPoint(pos.latitude_deg, pos.longitude_deg, pos.relative_altitude_m),
-                        velocity_xyz=(0.0, 0.0, 0.0),
-                        yaw_deg=att.yaw_deg,
-                        pitch_deg=att.pitch_deg,
-                        roll_deg=att.roll_deg,
-                        battery_percent=batt.remaining_percent * 100.0,
-                        battery_voltage=batt.voltage_v,
-                        gps_satellites=0,
-                        gimbal_pitch_deg=0.0,
-                        flight_mode=FlightMode.MISSION,
-                    )
+            return self._frame(pos)
         raise RuntimeError("unreachable")
 
     async def telemetry_stream(self) -> AsyncIterator[Telemetry]:
         async for pos in self._system.telemetry.position():
-            yield Telemetry(
-                timestamp=datetime.now(timezone.utc),
-                position=GeoPoint(pos.latitude_deg, pos.longitude_deg, pos.relative_altitude_m),
-                velocity_xyz=(0.0, 0.0, 0.0),
-                yaw_deg=0.0,
-                pitch_deg=0.0,
-                roll_deg=0.0,
-                battery_percent=0.0,
-                battery_voltage=0.0,
-                gps_satellites=0,
-                gimbal_pitch_deg=0.0,
-                flight_mode=FlightMode.MISSION,
-            )
+            yield self._frame(pos)
