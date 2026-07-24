@@ -104,7 +104,9 @@ def fetch_nearest_metar(lat: float, lon: float, max_distance_km: float = 100.0) 
 
 def _to_float(x) -> Optional[float]:
     try:
-        return float(x) if x is not None else None
+        if isinstance(x, str):
+            x = x.rstrip("+").strip()   # visibility "10+" -> 10 (>= 10 SM), don't drop to None
+        return float(x) if x not in (None, "") else None
     except (TypeError, ValueError):
         return None
 

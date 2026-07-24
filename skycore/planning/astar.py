@@ -28,7 +28,7 @@ def plan_around_obstacles(
 ) -> list[GeoPoint]:
     """Return a list of GeoPoints from start to end avoiding the obstacles."""
     try:
-        from shapely.geometry import Point, Polygon
+        from shapely.geometry import LineString, Point, Polygon
     except ImportError as e:
         raise ImportError("shapely is required. pip install shapely") from e
 
@@ -39,6 +39,12 @@ def plan_around_obstacles(
     def is_blocked(lat: float, lon: float) -> bool:
         pt = Point(lat, lon)
         return any(p.contains(pt) for p in buffered)
+
+    def edge_blocked(a_lat: float, a_lon: float, b_lat: float, b_lon: float) -> bool:
+        # A step whose endpoints are both free can still cut across an obstacle narrower
+        # than the grid (or clip a corner diagonally); check the whole segment.
+        seg = LineString([(a_lat, a_lon), (b_lat, b_lon)])
+        return any(seg.intersects(p) for p in buffered)
 
     pad = max(grid_resolution_m * 2 / 111_000.0, 0.001)
     min_lat = min(start.lat, end.lat) - pad
@@ -89,10 +95,20 @@ def plan_around_obstacles(
                     continue
                 if is_blocked(lat, lon):
                     continue
+                clat, clon = from_grid(*cur)
+                if edge_blocked(clat, clon, lat, lon):     # the STEP itself must clear obstacles
+                    continue
                 tentative = g_cur + math.hypot(di, dj)
                 if tentative < g_score.get(nb, math.inf):
                     g_score[nb] = tentative
                     came_from[nb] = cur
                     heapq.heappush(open_set, (tentative + h(nb), tentative, nb))
+    else:
+        # for-else: ran the full iteration budget without emptying the open set or
+        # reaching the goal — truncation, not a proven "no path".
+        raise RuntimeError(
+            f"A* exceeded {max_iters} iterations before reaching {end}; explored "
+            f"{len(g_score)} cells (goal may be unreachable, or raise max_iters)"
+        )
 
     raise RuntimeError(f"No path from {start} to {end} (explored {len(g_score)} cells)")

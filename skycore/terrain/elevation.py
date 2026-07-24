@@ -24,11 +24,19 @@ def get_elevation(lat: float, lon: float, timeout_s: float = 15.0) -> float:
 
 def get_elevations(points: Iterable[tuple[float, float]], timeout_s: float = 15.0) -> list[float]:
     """Batch elevation query. Returns elevations in meters AMSL, in input order."""
-    locs = "|".join(f"{lat},{lon}" for lat, lon in points)
+    pts = list(points)
+    locs = "|".join(f"{lat},{lon}" for lat, lon in pts)
     url = f"{OPEN_ELEVATION_URL}?locations={urllib.parse.quote(locs)}"
     with urllib.request.urlopen(url, timeout=timeout_s) as resp:
         data = json.loads(resp.read().decode("utf-8"))
-    return [float(r["elevation"]) for r in data["results"]]
+    results = data["results"]
+    # The API may drop/dedupe/reorder duplicate coordinates; a count mismatch would
+    # misalign elevations to the wrong waypoints, so fail loudly instead.
+    if len(results) != len(pts):
+        raise ValueError(
+            f"elevation API returned {len(results)} results for {len(pts)} points (misaligned)"
+        )
+    return [float(r["elevation"]) for r in results]
 
 
 def terrain_clearance(

@@ -66,7 +66,10 @@ class GeoPoint:
             sin(br) * sin(d_R) * cos(lat1),
             cos(d_R) - sin(lat1) * sin(lat2),
         )
-        return GeoPoint(degrees(lat2), degrees(lon2), self.alt + alt_delta)
+        # normalise longitude to [-180, 180] so offsets near the antimeridian don't
+        # produce values like 180.3 that break naive geofence/bounds comparisons
+        lon2_deg = (degrees(lon2) + 540.0) % 360.0 - 180.0
+        return GeoPoint(degrees(lat2), lon2_deg, self.alt + alt_delta)
 
 
 @dataclass

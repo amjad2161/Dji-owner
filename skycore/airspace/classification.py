@@ -95,6 +95,70 @@ class AirspaceDatabase:
         return bool(critical), critical
 
 
+# Best-effort OpenAIP numeric type-code -> class (the name-substring fallback in
+# _classify_airspace covers any codes not listed here, so a critical zone is not missed).
+_OPENAIP_TYPE_CODES = {
+    1: AirspaceClass.RESTRICTED,
+    2: AirspaceClass.DANGER,
+    3: AirspaceClass.PROHIBITED,
+    4: AirspaceClass.CTR,
+    7: AirspaceClass.TMA,
+}
+_CRITICAL = {AirspaceClass.PROHIBITED, AirspaceClass.RESTRICTED, AirspaceClass.DANGER, AirspaceClass.CTR}
+
+
+def _classify_airspace(props: dict) -> AirspaceClass:
+    """Classify from any available signal — numeric OpenAIP code, string type/icaoClass,
+    or a keyword in the name. Prefer a CRITICAL result so a prohibited/restricted/danger/
+    CTR zone is never silently downgraded (OpenAIP GeoJSON often uses numeric codes)."""
+    candidates: list[AirspaceClass] = []
+    for key in ("type", "icaoClass"):
+        v = props.get(key)
+        if isinstance(v, (int, float)) or (isinstance(v, str) and str(v).strip().lstrip("-").isdigit()):
+            mapped = _OPENAIP_TYPE_CODES.get(int(v))
+            if mapped:
+                candidates.append(mapped)
+    text = " ".join(str(props.get(k, "")) for k in ("type", "icaoClass", "name")).upper()
+    if "PROHIBIT" in text:
+        candidates.append(AirspaceClass.PROHIBITED)
+    if "RESTRICT" in text:
+        candidates.append(AirspaceClass.RESTRICTED)
+    if "DANGER" in text:
+        candidates.append(AirspaceClass.DANGER)
+    if "CTR" in text or "CONTROL ZONE" in text:
+        candidates.append(AirspaceClass.CTR)
+    if "TMA" in text:
+        candidates.append(AirspaceClass.TMA)
+    try:
+        candidates.append(AirspaceClass(str(props.get("type") or props.get("icaoClass") or "").upper()))
+    except (ValueError, TypeError):
+        pass
+    for c in candidates:                      # prefer any critical classification
+        if c in _CRITICAL:
+            return c
+    return candidates[0] if candidates else AirspaceClass.UNKNOWN
+
+
+def _limit_to_m_amsl(limit) -> Optional[float]:
+    """Convert an OpenAIP vertical limit {value, unit, referenceDatum} to metres.
+    unit: 1=ft, 6=FL(hundreds of ft), 2=m. Unknown units default to FEET (OpenAIP's
+    usual unit) rather than being read as metres."""
+    if not isinstance(limit, dict):
+        return None
+    try:
+        val = float(limit.get("value"))
+    except (TypeError, ValueError):
+        return None
+    unit = limit.get("unit")
+    us = str(unit).upper()
+    if unit == 6 or us in ("FL", "6"):
+        return val * 100.0 * 0.3048
+    if unit == 2 or us in ("M", "2", "MTR"):
+        return val
+    # unit 1 / "FT" / unspecified -> feet
+    return val * 0.3048
+
+
 def load_openaip_geojson(path: Path | str) -> AirspaceDatabase:
     """Load an OpenAIP GeoJSON country export.
 
@@ -108,35 +172,29 @@ def load_openaip_geojson(path: Path | str) -> AirspaceDatabase:
     for feat in features:
         props = feat.get("properties", {}) or {}
         geom = feat.get("geometry", {}) or {}
-        if geom.get("type") != "Polygon":
+        gtype = geom.get("type")
+        if gtype == "Polygon":
+            rings = [geom.get("coordinates", [[]])[0]]
+        elif gtype == "MultiPolygon":                       # was silently dropped before
+            rings = [poly[0] for poly in geom.get("coordinates", []) if poly]
+        else:
             continue
-        ring = geom["coordinates"][0]
-        polygon = [(c[1], c[0]) for c in ring]
-        cls_raw = (props.get("icaoClass") or props.get("type") or "").upper()
-        try:
-            cls = AirspaceClass(cls_raw)
-        except ValueError:
-            if "PROHIBIT" in cls_raw:
-                cls = AirspaceClass.PROHIBITED
-            elif "RESTRICT" in cls_raw:
-                cls = AirspaceClass.RESTRICTED
-            elif "DANGER" in cls_raw:
-                cls = AirspaceClass.DANGER
-            elif "CTR" in cls_raw:
-                cls = AirspaceClass.CTR
-            elif "TMA" in cls_raw:
-                cls = AirspaceClass.TMA
-            else:
-                cls = AirspaceClass.UNKNOWN
-        db.add(
-            AirspaceFeature(
-                name=props.get("name", "unnamed"),
-                cls=cls,
-                floor_m_amsl=float(props.get("lowerLimit", {}).get("value", 0) or 0),
-                ceiling_m_amsl=float(props.get("upperLimit", {}).get("value", 99999) or 99999),
-                polygon=polygon,
-                raw=props,
+        cls = _classify_airspace(props)
+        floor = _limit_to_m_amsl(props.get("lowerLimit"))
+        ceiling = _limit_to_m_amsl(props.get("upperLimit"))
+        for ring in rings:
+            if not ring:
+                continue
+            polygon = [(c[1], c[0]) for c in ring]
+            db.add(
+                AirspaceFeature(
+                    name=props.get("name", "unnamed"),
+                    cls=cls,
+                    floor_m_amsl=floor if floor is not None else 0.0,
+                    ceiling_m_amsl=ceiling if ceiling is not None else 99999.0,
+                    polygon=polygon,
+                    raw=props,
+                )
             )
-        )
     log.info("Loaded %d airspace features from %s", len(db.features), p)
     return db

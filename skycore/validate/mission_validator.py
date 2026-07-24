@@ -144,7 +144,13 @@ class MissionValidator:
                     category="geofence",
                 ))
         except Exception as e:
-            report.warnings.append(f"polygon check failed for wp[{idx}]: {e}")
+            # Fail CLOSED: a geofence check that cannot complete must invalidate the
+            # mission, not be downgraded to a warning that lets an unverified flight pass.
+            report.issues.append(WaypointIssue(
+                idx, Severity.ERROR,
+                f"polygon geofence check failed (cannot verify safety): {e}",
+                category="geofence",
+            ))
 
     def _check_circular_geofence(self, report, idx, point: GeoPoint):
         if not self.circular_geofence or not self.circular_geofence.home:
@@ -170,7 +176,11 @@ class MissionValidator:
                     idx, Severity.ERROR, f"enters critical airspace: {names}", category="airspace",
                 ))
         except Exception as e:
-            report.warnings.append(f"airspace check failed for wp[{idx}]: {e}")
+            report.issues.append(WaypointIssue(   # fail CLOSED (see polygon check)
+                idx, Severity.ERROR,
+                f"airspace check failed (cannot verify safety): {e}",
+                category="airspace",
+            ))
 
     def _check_terrain(self, report, mission: WaypointMission):
         try:
@@ -187,7 +197,13 @@ class MissionValidator:
                         category="terrain",
                     ))
         except Exception as e:
-            report.warnings.append(f"terrain check skipped: {e}")
+            # Fail CLOSED: if terrain elevations can't be fetched, we cannot certify
+            # ground clearance, so the mission must not pass validation.
+            report.issues.append(WaypointIssue(
+                -1, Severity.ERROR,
+                f"terrain check unavailable (cannot verify ground clearance): {e}",
+                category="terrain",
+            ))
 
     def _check_speeds(self, report, mission: WaypointMission):
         max_speed = self.drone_profile.max_horiz_speed_mps

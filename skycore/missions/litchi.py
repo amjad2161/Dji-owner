@@ -82,7 +82,7 @@ def import_litchi_csv(path: Path | str, name: Optional[str] = None) -> WaypointM
     """Load a Litchi CSV into a SkyCore mission."""
     p = Path(path)
     mission = WaypointMission(name=name or p.stem)
-    with p.open("r", encoding="utf-8") as f:
+    with p.open("r", encoding="utf-8-sig") as f:   # utf-8-sig: strip the BOM Litchi exports
         reader = csv.DictReader(f)
         for row in reader:
             actions = []
