@@ -27,7 +27,10 @@ class NotificationDispatcher:
         except ImportError:
             log.warning("aiohttp not installed; cannot send notifications")
             return
-        async with aiohttp.ClientSession() as session:
+        # bounded timeout: a hung endpoint must not block a safety alert for aiohttp's
+        # 300 s default (battery-low / geofence-breach notifications are time-critical)
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             if self.discord_webhook:
                 await self._discord(session, title, message, level)
             if self.slack_webhook:
@@ -40,38 +43,43 @@ class NotificationDispatcher:
     async def _discord(self, session, title, message, level):
         color = {"info": 0x3498DB, "warn": 0xF1C40F, "error": 0xE74C3C}.get(level, 0x95A5A6)
         try:
-            await session.post(
+            # `async with` releases the response/connection instead of holding it open
+            async with session.post(
                 self.discord_webhook,
                 json={"embeds": [{"title": title, "description": message, "color": color}]},
-            )
+            ):
+                pass
         except Exception as e:
             log.warning("Discord webhook failed: %s", e)
 
     async def _slack(self, session, title, message, level):
         try:
-            await session.post(self.slack_webhook, json={"text": f"*{title}*\n{message}"})
+            async with session.post(self.slack_webhook, json={"text": f"*{title}*\n{message}"}):
+                pass
         except Exception as e:
             log.warning("Slack webhook failed: %s", e)
 
     async def _telegram(self, session, title, message):
         url = f"https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage"
         try:
-            await session.post(
+            async with session.post(
                 url,
                 json={
                     "chat_id": self.telegram_chat_id,
                     "text": f"*{title}*\n{message}",
                     "parse_mode": "Markdown",
                 },
-            )
+            ):
+                pass
         except Exception as e:
             log.warning("Telegram webhook failed: %s", e)
 
     async def _custom(self, session, title, message, level):
         try:
-            await session.post(
+            async with session.post(
                 self.custom_webhook,
                 json={"title": title, "message": message, "level": level},
-            )
+            ):
+                pass
         except Exception as e:
             log.warning("Custom webhook failed: %s", e)

@@ -54,7 +54,9 @@ def apply_cube_lut(image_path: Path | str, lut_path: Path | str, output_path: Pa
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
     idx = (rgb * (size - 1)).astype(np.int32)
     idx = np.clip(idx, 0, size - 1)
-    out = lut3d[idx[..., 0], idx[..., 1], idx[..., 2]]
+    # .cube stores red varying fastest, so the C-order reshape lays the array out as
+    # [blue, green, red]; index in that order (was [r,g,b], which transposed R and B).
+    out = lut3d[idx[..., 2], idx[..., 1], idx[..., 0]]
     out = np.clip(out * 255, 0, 255).astype(np.uint8)
     out_bgr = cv2.cvtColor(out, cv2.COLOR_RGB2BGR)
     cv2.imwrite(str(output_path), out_bgr)

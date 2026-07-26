@@ -49,7 +49,10 @@ class MqttBridge:
         if self.username:
             c.username_pw_set(self.username, self.password)
         c.on_connect = lambda *args, **kw: log.info("MQTT connected to %s:%d", self.broker_host, self.broker_port)
-        c.connect(self.broker_host, self.broker_port, keepalive=60)
+        # c.connect() blocks on DNS/TCP; run it off the event loop so a slow/unreachable
+        # broker doesn't stall telemetry/WS/HTTP.
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, c.connect, self.broker_host, self.broker_port, 60)
         c.loop_start()
         self._client = c
         self._connected = True

@@ -84,4 +84,5 @@ def best_time_for_bearing(
         if err < best_err:
             best_err = err
             best = t
-    return best if best is not None and best_err <= tolerance_deg else best
+    # return None (not a wildly-off "best") when the sun never gets within tolerance_deg
+    return best if (best is not None and best_err <= tolerance_deg) else None

@@ -18,8 +18,8 @@ COL_HEIGHT = [
     "height_above_takeoff(feet)",
     "height_above_takeoff(meters)",
     "OSD.height [m]",
-    "altitude(feet)",
-    "altitude(meters)",
+    # NOTE: absolute-AMSL altitude(feet)/altitude(meters) intentionally excluded — they
+    # are not height-above-takeoff and would overstate climb by the launch-site elevation.
 ]
 COL_DIST = ["distance(feet)", "distance(meters)"]
 COL_HSPEED = ["speed_horizontal(mph)", "speed_horizontal(kph)", "OSD.hSpeed [m/s]"]
@@ -72,7 +72,13 @@ def analyze_csv(path: Path | str) -> FlightSummary:
     if c := _first_present(df, COL_TIME):
         try:
             d = float(df[c].max()) - float(df[c].min())
-            s.duration_min = d / 1000 / 60 if d > 1000 else d / 60
+            # Decide units by COLUMN NAME, not by magnitude: a >1000 s flight (in seconds)
+            # was wrongly treated as milliseconds, reporting ~1000x too small a duration.
+            cl = c.lower()
+            if "millisecond" in cl or "(ms)" in cl or cl == "time":
+                s.duration_min = d / 1000 / 60
+            else:
+                s.duration_min = d / 60
         except Exception:
             pass
 

@@ -23,7 +23,10 @@ def telemetry_to_gpx(
     pts = []
     for s in samples:
         ts = s.get("ts") or s.get("timestamp") or ""
-        ele = s.get("alt", 0)
+        try:                                   # coerce so a non-numeric alt can't emit malformed XML
+            ele = float(s.get("alt", 0) or 0)
+        except (TypeError, ValueError):
+            ele = 0.0
         elem = (
             f'      <trkpt lat="{s["lat"]:.7f}" lon="{s["lon"]:.7f}">'
             f"<ele>{ele}</ele>"

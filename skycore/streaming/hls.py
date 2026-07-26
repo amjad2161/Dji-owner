@@ -15,8 +15,13 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 log = logging.getLogger(__name__)
+
+# Only live-stream ingest schemes — blocks file://, http(s)://, concat and other
+# local-file / SSRF vectors from reaching ffmpeg -i.
+_ALLOWED_INPUT_SCHEMES = ("rtmp", "rtmps", "rtsp", "rtsps", "srt", "udp", "rtp")
 
 
 @dataclass
@@ -41,6 +46,11 @@ class HlsProxy:
     def start(self) -> None:
         if shutil.which("ffmpeg") is None:
             raise RuntimeError("ffmpeg not found in PATH")
+        scheme = urlparse(self.input_url).scheme.lower()
+        if scheme not in _ALLOWED_INPUT_SCHEMES:
+            raise ValueError(
+                f"input_url scheme '{scheme}' is not permitted; allowed: {_ALLOWED_INPUT_SCHEMES}"
+            )
         cmd = [
             "ffmpeg", "-y",
             "-i", self.input_url,
@@ -58,7 +68,9 @@ class HlsProxy:
             str(self.playlist_path),
         ]
         log.info("Starting HLS proxy: %s", " ".join(cmd))
-        self._proc = subprocess.Popen(cmd, stderr=subprocess.DEVNULL)
+        # capture ffmpeg stderr to a log so failures are diagnosable (was DEVNULL)
+        self._log_fh = open(self.output_dir / "ffmpeg.log", "wb")
+        self._proc = subprocess.Popen(cmd, stderr=self._log_fh)
 
     def stop(self) -> None:
         if self._proc:
@@ -67,6 +79,10 @@ class HlsProxy:
                 self._proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self._proc.kill()
+        fh = getattr(self, "_log_fh", None)
+        if fh:
+            fh.close()
+            self._log_fh = None
             self._proc = None
 
     @property

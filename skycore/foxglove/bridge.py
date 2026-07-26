@@ -25,7 +25,7 @@ class FoxgloveServer:
     See https://github.com/foxglove/ws-protocol for the spec.
     """
 
-    def __init__(self, host: str = "0.0.0.0", port: int = 8765, channel_topic: str = "/skycore/telemetry"):
+    def __init__(self, host: str = "127.0.0.1", port: int = 8765, channel_topic: str = "/skycore/telemetry"):
         self.host = host
         self.port = port
         self.channel_topic = channel_topic
@@ -104,8 +104,8 @@ class FoxgloveServer:
             "data": telemetry,
         })
         dead = []
-        for ws in self._clients:
-            try:
+        for ws in list(self._clients):   # snapshot: a client (dis)connecting during an
+            try:                          # await mutates the set -> RuntimeError otherwise
                 await ws.send(msg)
             except Exception:
                 dead.append(ws)

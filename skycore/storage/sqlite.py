@@ -57,10 +57,16 @@ class FlightDatabase:
         self._conn: Optional[sqlite3.Connection] = None
 
     def connect(self) -> None:
-        self._conn = sqlite3.connect(str(self.path))
+        # check_same_thread=False so the shared connection survives being driven from an
+        # executor thread; WAL + busy_timeout for durability/concurrency.
+        self._conn = sqlite3.connect(str(self.path), check_same_thread=False)
         self._conn.execute("PRAGMA foreign_keys = ON")
+        self._conn.execute("PRAGMA journal_mode = WAL")
+        self._conn.execute("PRAGMA busy_timeout = 5000")
+        self._conn.execute("PRAGMA synchronous = NORMAL")
         self._conn.executescript(SCHEMA)
         self._conn.commit()
+        self._tel_since_commit = 0
 
     def close(self) -> None:
         if self._conn:
@@ -106,6 +112,12 @@ class FlightDatabase:
                 json.dumps(telemetry_dict),
             ),
         )
+        # Commit periodically: without this the whole telemetry buffer is lost if the
+        # process dies mid-flight (commit previously happened only in end_flight()).
+        self._tel_since_commit = getattr(self, "_tel_since_commit", 0) + 1
+        if self._tel_since_commit >= 50:
+            self._conn.commit()
+            self._tel_since_commit = 0
 
     def commit(self) -> None:
         self._conn.commit()
