@@ -23,6 +23,23 @@ skycore serve --backend simulator
 
 Open http://127.0.0.1:8080. You'll see live telemetry from the simulator, plus buttons for takeoff / goto / land / photo / record. Click "Takeoff" and watch the altitude metric climb.
 
+### Server security (it controls an aircraft)
+
+The dashboard binds **127.0.0.1 by default** and the API is hardened accordingly:
+
+| Behaviour | Detail |
+|---|---|
+| **CSRF protection** | Every state-mutating route (`takeoff`, `land`, `rth`, `goto`, `velocity`, `photo`, `record/*`) requires an `X-SkyCore: 1` header and a same-origin `Origin`. A malicious page you merely visit therefore **cannot** command your drone. |
+| **Optional token auth** | Set `SKYCORE_API_TOKEN=<secret>` to additionally require `Authorization: Bearer <secret>` on those routes and on the telemetry WebSocket (`?token=<secret>`). |
+| **Non-loopback bind** | `serve --host 0.0.0.0` is **refused** unless `SKYCORE_API_TOKEN` is set — exposing unauthenticated flight control to a network is never accidental. |
+| **Input bounds** | Coordinates/speeds are range-checked and reject `NaN`/`Infinity` (a `NaN` latitude would otherwise slip past the geofence, since every comparison with `NaN` is false). |
+| **WebSocket** | `/ws/telemetry` validates `Origin` (and the token when set) before accepting, so another site can't stream your live GPS. |
+
+```bash
+# expose to your LAN, safely
+SKYCORE_API_TOKEN=$(openssl rand -hex 24) skycore serve --host 0.0.0.0
+```
+
 ## Fly a mission from the CLI
 
 Generate an orbit mission:

@@ -53,7 +53,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install core deps (heavy CV/ML/MAVLink extras are optional and skipped)
-        run: pip install -r requirements.txt shapely astral pytest pytest-asyncio ruff && pip install -e .
+        run: pip install -r requirements.txt shapely astral pytest pytest-asyncio ruff httpx2 && pip install -e .
       - name: Lint (ruff — real errors only)
         run: ruff check --select F,E9 skycore tests
       - name: Test suite

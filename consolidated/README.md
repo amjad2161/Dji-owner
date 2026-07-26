@@ -7,8 +7,12 @@ together and verified end-to-end. For the honest inventory of the whole archive
 
 > **Honesty note.** A **software simulator** generates ground truth over real time.
 > Five GENUINE skycore modules run in the live loop against it:
-> - **navigation** — the real 22-state Adaptive UKF (`navigation/aukf.py`) filters noisy
->   GPS; the telemetry the GCS shows is the filter's estimate (`nav_backend`, live `nav_nis`).
+> - **navigation** — the real Adaptive UKF (`navigation/aukf.py`) filters noisy GPS; the
+>   telemetry the GCS shows is the filter's estimate (`nav_backend`, live `nav_nis`).
+>   **Honest scope:** the filter carries a 22-element state vector, but the simulator feeds
+>   it GPS + gravity only (no IMU), so **only the 6 position/velocity states are actually
+>   observable** — the attitude/bias/wind slots are carried, not estimated. Its NIS is
+>   consistency-checked against `dim_z` in the test suite.
 > - **control** — the real `LQRController` (`control/lqr.py`) flies the aircraft closed-loop
 >   to its targets (`control_backend`).
 > - **detection** — the real `CUASClassifier` (`cuas/classifier.py`) classifies **three simulated
@@ -171,7 +175,9 @@ OPENROUTER_API_KEY=sk-or-...
 - **Web app didn't build at all** — added the missing `index.html`, `vite.config.ts`,
   and `tsconfig.node.json` (Vite has no entry point without them).
 - **`OpenRouterService` used `process.env`**, which is undefined in a Vite browser
-  build — changed to `import.meta.env.VITE_OPENROUTER_API_KEY` and added `vite-env.d.ts`.
+  build — changed to `import.meta.env` and added `vite-env.d.ts`. _(Later superseded: the
+  chat now proxies through the backend so the key never reaches the browser — see
+  “Authentication & config”.)_
 - **Backend telemetry was static and shape-incompatible** with the GCS — replaced with
   `serve.py`, which evolves state over real time and emits the exact shape the GCS's
   `TelemetryService` reads (`battery.percent`, `position.{lat,lon,altitude}`,
