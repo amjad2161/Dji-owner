@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -42,6 +43,16 @@ def serve(host, port, backend, connection_url, home):
         click.echo("uvicorn required. pip install uvicorn", err=True)
         sys.exit(1)
     from skycore.api.app import create_app
+
+    # Binding beyond loopback exposes drone-control routes to the network; require a
+    # token so it can't be done unauthenticated by accident.
+    if host not in ("127.0.0.1", "localhost", "::1") and not os.environ.get("SKYCORE_API_TOKEN"):
+        click.echo(
+            f"refusing to bind {host} without auth: set SKYCORE_API_TOKEN=<secret> to expose "
+            "the API beyond localhost (it controls the aircraft)",
+            err=True,
+        )
+        sys.exit(2)
 
     lat, lon = (float(x) for x in home.split(","))
     drone = _make_drone(backend, connection_url, GeoPoint(lat, lon))
