@@ -17,7 +17,7 @@ import CommandToast from './components/CommandToast';
 // Services
 import { TelemetryService } from './services/TelemetryService';
 import { AdsBService } from './services/AdsBService';
-import { getToken, tokenValid, setSession, getUser, clearSession } from './services/auth';
+import { getToken, tokenValid, setSession, getUser, clearSession, setSessionExpiredHandler } from './services/auth';
 
 export interface DroneState {
   connected: boolean;
@@ -51,6 +51,14 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    // If the server ever rejects our token (401 / WS 4401), drop back to the login
+    // screen instead of showing an authenticated shell with no data.
+    setSessionExpiredHandler(() => {
+      TelemetryService.getInstance().disconnect();
+      AdsBService.getInstance().stopMonitoring();
+      setUser(null);
+      setIsAuthenticated(false);
+    });
     // Restore a still-valid session (the server re-verifies the signature)
     const token = getToken();
     if (token && tokenValid(token)) {

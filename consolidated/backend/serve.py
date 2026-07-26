@@ -312,6 +312,9 @@ class SimState:
     # ---- commands (mirror GCS TelemetryService.sendCommand) ----
     def command(self, cmd: str, p: dict, plan_inline: bool = True) -> None:
         self._cmd_result = {"ok": True, "reason": ""}     # overridden below on a rejection
+        # Bump on every command so a deferred RRT* solve can detect that a newer command
+        # (e.g. another client's land/rtl) landed while it was still solving.
+        self._cmd_seq = getattr(self, "_cmd_seq", 0) + 1
         airborne = self.u > 0.5 or self.mode in ("TAKEOFF", "FLYING", "RTL")
         if cmd in ("takeoff", "land", "rtl", "goto"):
             self.wp_queue, self.route = [], []   # a new target cancels any active route
@@ -364,6 +367,16 @@ class SimState:
                 self.apply_route(path, te, tn, alt)
                 return
             self.tgt_e, self.tgt_n, self.mode = te, tn, "FLYING"
+        else:
+            # No branch matched (goto while landed, arm/disarm while airborne, unknown
+            # command): nothing happened, so NACK instead of falsely reporting "accepted".
+            if cmd == "goto":
+                reason = "goto rejected: not airborne"
+            elif cmd in ("arm", "disarm"):
+                reason = f"{cmd} rejected: aircraft is airborne"
+            else:
+                reason = f"unknown command '{cmd}'"
+            self._cmd_result = {"ok": False, "reason": reason}
 
     def _solve_route(self, start: tuple, te: float, tn: float, alt: float):
         """Real RRT* solve around the no-fly zone, run in a worker thread via
@@ -381,7 +394,14 @@ class SimState:
             except Exception:
                 return None
 
-    def apply_route(self, path, te: float, tn: float, alt: float) -> None:
+    def apply_route(self, path, te: float, tn: float, alt: float, seq: int | None = None) -> None:
+        # Drop a solve that finished after a NEWER command superseded it — otherwise the
+        # stale route would overwrite tgt/mode and resume flying an aircraft another
+        # client just landed (the solve happens across an await).
+        if seq is not None and seq != getattr(self, "_cmd_seq", 0):
+            self._pending_route = None
+            log.info("discarding stale route (seq %s != %s)", seq, getattr(self, "_cmd_seq", 0))
+            return
         self._pending_route = None
         if path and len(path) >= 2:
             self.route = [{"e": round(float(wp[0]), 1), "n": round(float(wp[1]), 1)} for wp in path]
@@ -738,7 +758,12 @@ async def api_login(creds: dict) -> dict:
     """Verify credentials SERVER-SIDE and issue a signed token."""
     u, pw = str(creds.get("username", "")), str(creds.get("password", ""))
     rec = _USERS.get(u)
-    if rec and hmac.compare_digest(_hash_pw(pw, rec["salt"]), rec["hash"]):
+    if rec is None:
+        # Always run the KDF so an unknown username takes the same time as a known one
+        # (otherwise response latency enumerates valid usernames).
+        _hash_pw(pw, b"\x00" * 16)
+        raise HTTPException(status_code=401, detail="invalid credentials")
+    if hmac.compare_digest(_hash_pw(pw, rec["salt"]), rec["hash"]):
         return {"token": make_token(u, rec["role"]), "username": u, "role": rec["role"], "auth": AUTH_ENABLED}
     raise HTTPException(status_code=401, detail="invalid credentials")
 
@@ -763,11 +788,13 @@ async def api_chat(req: dict) -> dict:
                            "messages": req.get("messages", [])}).encode()
         rq = urllib.request.Request("https://openrouter.ai/api/v1/chat/completions", data=body,
                                     headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
-        raw = await asyncio.to_thread(lambda: urllib.request.urlopen(rq, timeout=30).read())
+        # cap the read so an oversized/hostile upstream response can't spike memory
+        raw = await asyncio.to_thread(lambda: urllib.request.urlopen(rq, timeout=30).read(2_000_000))
         reply = json.loads(raw).get("choices", [{}])[0].get("message", {}).get("content", "")
         return {"ok": True, "reply": reply}
     except Exception as ex:
-        return {"ok": False, "reply": None, "reason": f"chat proxy error: {ex}"}
+        log.warning("chat proxy error: %s", ex)          # detail stays server-side
+        return {"ok": False, "reply": None, "reason": "chat proxy unavailable"}
 
 
 @app.get("/api/readyz")
@@ -861,8 +888,9 @@ async def ws_telemetry(ws: WebSocket) -> None:
                     pending = getattr(state, "_pending_route", None)
                     if pending:                              # RRT* solve deferred: run it off-loop
                         e0, n0, u0, te, tn, alt = pending
+                        seq = getattr(state, "_cmd_seq", 0)  # detect supersession across the await
                         path = await asyncio.to_thread(state._solve_route, (e0, n0, u0), te, tn, alt)
-                        state.apply_route(path, te, tn, alt)
+                        state.apply_route(path, te, tn, alt, seq=seq)
                     res = getattr(state, "_cmd_result", None) or {"ok": True, "reason": ""}
                     log.info("cmd %s -> mode=%s ok=%s", cmd, state.mode, res["ok"])
                     await _send({"type": "ack" if res["ok"] else "nack", "command": cmd,

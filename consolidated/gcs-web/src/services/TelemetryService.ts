@@ -4,7 +4,7 @@
  */
 
 import { DroneState } from '../App';
-import { wsUrl } from './auth';
+import { wsUrl, expireSession } from './auth';
 
 export interface CommandResult {
   command: string;
@@ -107,11 +107,16 @@ export class TelemetryService {
         }
       };
 
-      this.ws.onclose = () => {
+      this.ws.onclose = (ev) => {
         console.log('Telemetry disconnected');
         this.currentState.connected = false;
         this.notifySubscribers();
         if (this.intentionalClose) { this.intentionalClose = false; return; }  // do not revive a deliberate disconnect
+        if (ev?.code === 4401) {
+          // server rejected the token: retrying with the same dead token is futile
+          expireSession();
+          return;
+        }
         this.attemptReconnect();
       };
 

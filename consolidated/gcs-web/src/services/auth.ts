@@ -71,9 +71,27 @@ export function wsUrl(path: string): string {
   return `${wsBase()}${path}${t ? `?token=${encodeURIComponent(t)}` : ''}`;
 }
 
+/** Called when the server rejects our token, so the app can return to the login screen. */
+let onSessionExpired: (() => void) | null = null;
+export function setSessionExpiredHandler(fn: () => void): void {
+  onSessionExpired = fn;
+}
+
+/** Clear the session and notify the app that re-login is required. */
+export function expireSession(): void {
+  clearSession();
+  onSessionExpired?.();
+}
+
 /** Authenticated GET returning parsed JSON (throws on non-2xx). */
 export async function apiGet<T = unknown>(path: string): Promise<T> {
   const res = await fetch(`${apiBase()}${path}`, { headers: { ...authHeaders() } });
+  if (res.status === 401) {
+    // token invalid/expired server-side: don't leave the UI stuck "authenticated"
+    // showing an empty dashboard — force a return to login.
+    expireSession();
+    throw new Error('session expired');
+  }
   if (!res.ok) throw new Error(`${path} -> ${res.status}`);
   return res.json() as Promise<T>;
 }

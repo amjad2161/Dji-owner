@@ -41,7 +41,10 @@ export class AdsBService {
 
   private connectBackendThreats(): void {
     if (!this.monitoring) return;                       // a queued reconnect must not revive a stopped feed
-    if (this.threatWs?.readyState === WebSocket.OPEN) return;
+    // bail on OPEN *or* CONNECTING: constructing a second socket while one is still
+    // connecting orphans the first (whose onclose then schedules yet another reconnect)
+    if (this.threatWs && (this.threatWs.readyState === WebSocket.OPEN ||
+                          this.threatWs.readyState === WebSocket.CONNECTING)) return;
     try {
       // same-origin under the unified server (wss on https); dev backend on :8080.
       // Token carried as a query param (browsers can't set WS request headers).
